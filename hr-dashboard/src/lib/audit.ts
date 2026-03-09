@@ -1,0 +1,146 @@
+import { prisma } from './prisma'
+
+// Audit action types
+export type AuditAction =
+  | 'JOB_CREATED'
+  | 'JOB_UPDATED'
+  | 'JOB_CLOSED'
+  | 'CANDIDATE_CREATED'
+  | 'CANDIDATE_UPDATED'
+  | 'APPLICATION_CREATED'
+  | 'APPLICATION_UPDATED'
+  | 'APPLICATION_DELETED'
+  | 'RESUME_UPLOADED'
+  | 'RESUME_REPLACED'
+  | 'RESUME_VIEWED'
+  | 'USER_CREATED'
+  | 'USER_UPDATED'
+  | 'USER_DEACTIVATED'
+
+// Entity types
+export type EntityType = 'Job' | 'Candidate' | 'Application' | 'User' | 'Resume'
+
+interface AuditLogParams {
+  userId: string | null
+  action: AuditAction
+  entityType: EntityType
+  entityId: string
+  before?: object | null
+  after?: object | null
+  ipAddress?: string | null
+}
+
+/**
+ * Log an audit trail entry for any write operation
+ * @param params - The audit log parameters
+ */
+export async function logAudit(params: AuditLogParams): Promise<void> {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: params.userId,
+        action: params.action,
+        entityType: params.entityType,
+        entityId: params.entityId,
+        beforeJson: params.before ?? undefined,
+        afterJson: params.after ?? undefined,
+        ipAddress: params.ipAddress ?? undefined,
+      },
+    })
+  } catch (error) {
+    // Log error but don't throw - audit logging should not break the main operation
+    console.error('[Audit] Failed to log audit entry:', error)
+  }
+}
+
+/**
+ * Extract client IP address from a Request object
+ * Handles various proxy headers (X-Forwarded-For, X-Real-IP, etc.)
+ * @param request - The incoming request
+ * @returns The client IP or null
+ */
+export function getClientIp(request: Request): string | null {
+  // Try common proxy headers first
+  const headers = request.headers
+  
+  // X-Forwarded-For may contain multiple IPs, take the first
+  const forwardedFor = headers.get('x-forwarded-for')
+  if (forwardedFor) {
+    const firstIp = forwardedFor.split(',')[0]?.trim()
+    if (firstIp) return firstIp
+  }
+
+  // Try other common headers
+  const realIp = headers.get('x-real-ip')
+  if (realIp) return realIp
+
+  const cfConnectingIp = headers.get('cf-connecting-ip')
+  if (cfConnectingIp) return cfConnectingIp
+
+  // No IP found
+  return null
+}
+
+/**
+ * Create audit log with automatic before/after diffing
+ * Use this for updates where you have both states
+ */
+export async function logAuditUpdate<T extends object>(params: {
+  userId: string | null
+  action: AuditAction
+  entityType: EntityType
+  entityId: string
+  before: T
+  after: T
+  ipAddress?: string | null
+}): Promise<void> {
+  return logAudit({
+    ...params,
+    before: params.before,
+    after: params.after,
+  })
+}
+
+/**
+ * Create audit log for entity creation
+ */
+export async function logAuditCreate<T extends object>(params: {
+  userId: string | null
+  action: AuditAction
+  entityType: EntityType
+  entityId: string
+  created: T
+  ipAddress?: string | null
+}): Promise<void> {
+  return logAudit({
+    userId: params.userId,
+    action: params.action,
+    entityType: params.entityType,
+    entityId: params.entityId,
+    before: null,
+    after: params.created,
+    ipAddress: params.ipAddress,
+  })
+}
+
+/**
+ * Create audit log for entity deletion
+ */
+export async function logAuditDelete<T extends object>(params: {
+  userId: string | null
+  action: AuditAction
+  entityType: EntityType
+  entityId: string
+  deleted: T
+  ipAddress?: string | null
+}): Promise<void> {
+  return logAudit({
+    userId: params.userId,
+    action: params.action,
+    entityType: params.entityType,
+    entityId: params.entityId,
+    before: params.deleted,
+    after: null,
+    ipAddress: params.ipAddress,
+  })
+}

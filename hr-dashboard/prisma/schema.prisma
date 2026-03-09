@@ -1,0 +1,162 @@
+// HR Dashboard Prisma Schema
+// All 5 entities: User, Job, Candidate, Application, AuditLog
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserRole {
+  ADMIN
+  RECRUITER
+  VIEWER
+}
+
+enum JobStatus {
+  OPEN
+  CLOSED
+  ON_HOLD
+}
+
+enum JobPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PipelineHealth {
+  AHEAD
+  ON_TRACK
+  BEHIND
+}
+
+enum CandidateSource {
+  REFERRAL
+  LINKEDIN
+  CAREERS_PAGE
+  AGENCY
+  OTHER
+}
+
+enum ApplicationStage {
+  NEW
+  SCREENING
+  INTERVIEWING
+  FINAL_ROUND
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+// =============================================================================
+// MODELS
+// =============================================================================
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         UserRole   @default(VIEWER)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  auditLogs    AuditLog[]
+}
+
+model Job {
+  id              String          @id @default(uuid())
+  title           String
+  department      String
+  description     String          @db.Text
+  location        String?
+  hiringManager   String?
+  recruiterOwner  String?
+  status          JobStatus       @default(OPEN)
+  priority        JobPriority     @default(MEDIUM)
+  pipelineHealth  PipelineHealth?
+  isCritical      Boolean         @default(false)
+  openedAt        DateTime?
+  targetFillDate  DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  applications    Application[]
+
+  @@index([status])
+  @@index([isCritical])
+  @@index([pipelineHealth])
+  @@index([updatedAt])
+  @@index([targetFillDate])
+}
+
+model Candidate {
+  id             String           @id @default(uuid())
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  linkedinUrl    String?
+  currentCompany String?
+  location       String?
+  source         CandidateSource?
+  resumeKey      String?
+  resumeName     String?
+  notes          String?          @db.Text
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  applications   Application[]
+
+  @@index([lastName])
+  @@index([email])
+}
+
+model Application {
+  id              String           @id @default(uuid())
+  jobId           String
+  candidateId     String
+  stage           ApplicationStage @default(NEW)
+  recruiterOwner  String?
+  interviewNotes  String?          @db.Text
+  stageUpdatedAt  DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  job             Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidate       Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, candidateId])
+  @@index([jobId])
+  @@index([candidateId])
+  @@index([stage])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String
+  beforeJson  Json?
+  afterJson   Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
