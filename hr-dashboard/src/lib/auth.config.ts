@@ -7,18 +7,19 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
-      const isOnDashboard = nextUrl.pathname.startsWith('/dashboard') ||
-                            nextUrl.pathname.startsWith('/jobs') ||
-                            nextUrl.pathname.startsWith('/candidates')
+      const isOnProtectedRoute = nextUrl.pathname === '/' ||
+                                 nextUrl.pathname.startsWith('/dashboard') ||
+                                 nextUrl.pathname.startsWith('/jobs') ||
+                                 nextUrl.pathname.startsWith('/candidates')
       const isOnLogin = nextUrl.pathname.startsWith('/login')
 
-      if (isOnDashboard) {
+      if (isOnProtectedRoute) {
         if (isLoggedIn) return true
         return false // Redirect to login
       }
 
       if (isOnLogin && isLoggedIn) {
-        return Response.redirect(new URL('/dashboard', nextUrl))
+        return Response.redirect(new URL('/', nextUrl))
       }
 
       return true

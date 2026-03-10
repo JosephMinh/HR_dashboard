@@ -23,7 +23,7 @@ export function ErrorState({
       <h3 className="text-lg font-medium mb-1">{title}</h3>
       <p className="text-sm text-muted-foreground max-w-sm mb-4">{message}</p>
       {onRetry && (
-        <Button onClick={onRetry} variant="outline">
+        <Button onClick={() => onRetry()} variant="outline">
           Try again
         </Button>
       )}
