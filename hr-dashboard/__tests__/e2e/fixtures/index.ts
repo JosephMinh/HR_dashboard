@@ -13,6 +13,10 @@ import { getAuthenticatedContext, type UserRole, TEST_USERS, performLogin } from
 import { getE2EPrisma } from "../utils/database"
 import type { PrismaClient } from "@/generated/prisma/client"
 
+const playwrightPort = Number(process.env.PLAYWRIGHT_PORT ?? "3000")
+const playwrightBaseUrl =
+  process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${playwrightPort}`
+
 // Extend the base test with custom fixtures
 export type TestFixtures = {
   // Authenticated pages for each role
@@ -47,8 +51,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // Worker-scoped authenticated contexts
   adminContext: [
     async ({ browser }, use) => {
-      const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000"
-      const context = await getAuthenticatedContext(browser, "ADMIN", baseUrl)
+      const context = await getAuthenticatedContext(browser, "ADMIN", playwrightBaseUrl)
       await use(context)
       await context.close()
     },
@@ -57,8 +60,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   recruiterContext: [
     async ({ browser }, use) => {
-      const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000"
-      const context = await getAuthenticatedContext(browser, "RECRUITER", baseUrl)
+      const context = await getAuthenticatedContext(browser, "RECRUITER", playwrightBaseUrl)
       await use(context)
       await context.close()
     },
@@ -67,8 +69,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   viewerContext: [
     async ({ browser }, use) => {
-      const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000"
-      const context = await getAuthenticatedContext(browser, "VIEWER", baseUrl)
+      const context = await getAuthenticatedContext(browser, "VIEWER", playwrightBaseUrl)
       await use(context)
       await context.close()
     },
@@ -111,7 +112,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   loginAs: async ({ baseURL }, use) => {
     const login = async (page: Page, role: UserRole) => {
       const user = TEST_USERS[role]
-      await performLogin(page, user, baseURL ?? "http://127.0.0.1:3000")
+      await performLogin(page, user, baseURL ?? playwrightBaseUrl)
     }
     await use(login)
   },

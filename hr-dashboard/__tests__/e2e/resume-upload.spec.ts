@@ -10,10 +10,13 @@ import path from "path"
 import fs from "fs"
 
 // Skip all tests if storage is not configured
-const storageConfigured =
+const storageConfigured = Boolean(
   process.env.STORAGE_BUCKET &&
-  process.env.AWS_ACCESS_KEY_ID &&
-  process.env.AWS_SECRET_ACCESS_KEY
+    (
+      (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) ||
+      !process.env.STORAGE_ENDPOINT
+    )
+)
 
 test.describe("Resume Upload Flow", () => {
   // Create a minimal test PDF fixture if it doesn't exist
@@ -47,8 +50,9 @@ test.describe("Resume Upload Flow", () => {
       // Find a candidate in the database
       const candidate = await prisma.candidate.findFirst()
       test.skip(!candidate, "No candidate in database")
+      if (!candidate) return
 
-      await page.goto(`/candidates/${candidate!.id}`)
+      await page.goto(`/candidates/${candidate.id}`)
       await page.waitForLoadState("networkidle")
 
       // Look for resume upload component
@@ -62,8 +66,9 @@ test.describe("Resume Upload Flow", () => {
         where: { resumeKey: null },
       })
       test.skip(!candidate, "No candidate without resume in database")
+      if (!candidate) return
 
-      await page.goto(`/candidates/${candidate!.id}`)
+      await page.goto(`/candidates/${candidate.id}`)
       await page.waitForLoadState("networkidle")
 
       // Find file input
@@ -87,8 +92,9 @@ test.describe("Resume Upload Flow", () => {
         where: { resumeKey: { not: null } },
       })
       test.skip(!candidate, "No candidate with resume in database")
+      if (!candidate) return
 
-      await page.goto(`/candidates/${candidate!.id}`)
+      await page.goto(`/candidates/${candidate.id}`)
       await page.waitForLoadState("networkidle")
 
       // Should show resume info
@@ -110,8 +116,9 @@ test.describe("Resume Upload Flow", () => {
       // This test can run even without storage to verify error handling
       const candidate = await prisma.candidate.findFirst()
       test.skip(!candidate, "No candidate in database")
+      if (!candidate) return
 
-      await page.goto(`/candidates/${candidate!.id}`)
+      await page.goto(`/candidates/${candidate.id}`)
       await page.waitForLoadState("networkidle")
 
       // Check if resume upload UI exists
@@ -133,13 +140,27 @@ test.describe("Resume Upload Flow", () => {
         await fileInput.setInputFiles(testResumePath)
 
         // Should show configuration error, not a generic failure
-        const errorMessage = page.locator(
-          ':text("storage"), :text("configuration"), :text("configure")'
-        )
-        const hasConfigError = (await errorMessage.count()) > 0
+        // Wait briefly for any error to appear
+        await page.waitForTimeout(2000)
 
-        // Either show config error or gracefully handle
-        expect(hasConfigError || true).toBe(true) // Soft assertion
+        const errorMessage = page.locator(
+          ':text("storage"), :text("configuration"), :text("configure"), :text("error"), :text("failed")'
+        )
+        const hasErrorFeedback = (await errorMessage.count()) > 0
+
+        // When storage isn't configured, the app should show some feedback
+        // (either a config-specific error or generic upload error)
+        // We verify the upload didn't silently fail with no user feedback
+        if (!hasErrorFeedback) {
+          // Check if upload was silently accepted (would be a bug without storage)
+          const successIndicator = page.locator(
+            '[data-testid="upload-success"], .upload-success, :text("uploaded")'
+          )
+          const hasSuccess = (await successIndicator.count()) > 0
+          // If no error AND no success shown, that's acceptable (upload may be hidden when unconfigured)
+          // If success shown without storage configured, that would be unexpected
+          expect(hasSuccess).toBe(false)
+        }
       }
     })
   })

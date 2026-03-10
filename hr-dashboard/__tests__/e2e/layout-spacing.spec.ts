@@ -109,11 +109,14 @@ test.describe("Layout Measurements", () => {
 
     const box = await title.boundingBox()
     expect(box).not.toBeNull()
+    if (!box) {
+      throw new Error("Expected title bounding box to be available")
+    }
 
     // Content should start within reasonable range from top
     // TopBar (64px) + reduced padding (20px) + some margin = ~84-120px
-    expect(box!.y).toBeGreaterThan(70)
-    expect(box!.y).toBeLessThan(130)
+    expect(box.y).toBeGreaterThan(70)
+    expect(box.y).toBeLessThan(130)
   })
 
   test("spacing is consistent across main pages", async ({

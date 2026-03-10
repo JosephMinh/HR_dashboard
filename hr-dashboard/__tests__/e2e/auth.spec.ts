@@ -4,14 +4,23 @@
  * Tests login, logout, session management, and role-based access.
  */
 
+import type { Page } from "@playwright/test"
 import { test, expect } from "./fixtures"
 import { TEST_USERS } from "./utils/auth"
+
+async function goto(page: Page, path: string): Promise<void> {
+  await page.goto(path, { waitUntil: "domcontentloaded" })
+}
+
+async function gotoLogin(page: Page, path = "/login"): Promise<void> {
+  await goto(page, path)
+  await page.waitForSelector("#email", { state: "visible" })
+}
 
 test.describe("Login Flow", () => {
   test.beforeEach(async ({ page }) => {
     // Start from login page
-    await page.goto("/login")
-    await page.waitForLoadState("networkidle")
+    await gotoLogin(page)
   })
 
   test("successful login redirects to dashboard", async ({ page }) => {
@@ -28,8 +37,9 @@ test.describe("Login Flow", () => {
     await page.waitForURL("/", { timeout: 10000 })
 
     // Should see user info in top bar
-    await expect(page.getByText(user.name)).toBeVisible()
-    await expect(page.getByText(user.role)).toBeVisible()
+    const userMenuTrigger = page.getByRole("button", { name: /open user menu/i })
+    await expect(userMenuTrigger).toContainText(user.name)
+    await expect(userMenuTrigger).toContainText(user.role)
   })
 
   test("invalid email shows error", async ({ page }) => {
@@ -92,8 +102,7 @@ test.describe("Login Flow", () => {
     const user = TEST_USERS.RECRUITER
 
     // Go to login with callback
-    await page.goto("/login?callbackUrl=/jobs")
-    await page.waitForLoadState("networkidle")
+    await gotoLogin(page, "/login?callbackUrl=/jobs")
 
     // Login
     await page.fill("#email", user.email)
@@ -106,17 +115,16 @@ test.describe("Login Flow", () => {
 })
 
 test.describe("Session Management", () => {
-  test("session persists after page refresh", async ({ recruiterPage: page }) => {
-    // Go to dashboard
-    await page.goto("/")
-    await page.waitForLoadState("networkidle")
+  test("session persists after page refresh", async ({ page, loginAs }) => {
+    await loginAs(page, "RECRUITER")
+    await goto(page, "/")
 
     // Verify logged in
     await expect(page.getByText(TEST_USERS.RECRUITER.name)).toBeVisible()
 
     // Refresh the page
     await page.reload()
-    await page.waitForLoadState("networkidle")
+    await page.waitForLoadState("domcontentloaded")
 
     // Should still be logged in
     await expect(page.getByText(TEST_USERS.RECRUITER.name)).toBeVisible()
@@ -124,47 +132,42 @@ test.describe("Session Management", () => {
 
   test("protected routes redirect to login when not authenticated", async ({ page }) => {
     // Try to access protected routes without authentication
-    await page.goto("/")
-    await page.waitForLoadState("networkidle")
+    await goto(page, "/")
 
     // Should be redirected to login
     await expect(page).toHaveURL(/\/login/)
   })
 
   test("accessing /jobs without auth redirects to login", async ({ page }) => {
-    await page.goto("/jobs")
-    await page.waitForLoadState("networkidle")
+    await goto(page, "/jobs")
     await expect(page).toHaveURL(/\/login/)
   })
 
   test("accessing /candidates without auth redirects to login", async ({ page }) => {
-    await page.goto("/candidates")
-    await page.waitForLoadState("networkidle")
+    await goto(page, "/candidates")
     await expect(page).toHaveURL(/\/login/)
   })
 })
 
 test.describe("Logout Flow", () => {
-  test("logout clears session and redirects to login", async ({ recruiterPage: page }) => {
-    // Go to dashboard
-    await page.goto("/")
-    await page.waitForLoadState("networkidle")
+  test("logout clears session and redirects to login", async ({ page, loginAs }) => {
+    await loginAs(page, "RECRUITER")
+    await goto(page, "/")
 
     // Verify logged in
     await expect(page.getByText(TEST_USERS.RECRUITER.name)).toBeVisible()
 
     // Open user menu
-    await page.click('[class*="DropdownMenuTrigger"]')
+    await page.getByRole("button", { name: /open user menu/i }).click()
 
     // Click logout
-    await page.click('text=Logout')
+    await page.getByRole("menuitem", { name: /logout/i }).click()
 
     // Should redirect to login
     await page.waitForURL(/\/login/, { timeout: 10000 })
 
     // Try to access protected route
-    await page.goto("/")
-    await page.waitForLoadState("networkidle")
+    await goto(page, "/")
 
     // Should be redirected to login again
     await expect(page).toHaveURL(/\/login/)
@@ -172,25 +175,25 @@ test.describe("Logout Flow", () => {
 })
 
 test.describe("Role-based Access", () => {
-  test("ADMIN sees full navigation", async ({ adminPage: page }) => {
-    await page.goto("/")
-    await page.waitForLoadState("networkidle")
+  test("ADMIN sees full navigation", async ({ page, loginAs }) => {
+    await loginAs(page, "ADMIN")
+    await goto(page, "/")
 
     // Should see Dashboard, Jobs, Candidates links
-    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible()
-    await expect(page.getByRole("link", { name: "Jobs" })).toBeVisible()
-    await expect(page.getByRole("link", { name: "Candidates" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Jobs", exact: true })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Candidates", exact: true })).toBeVisible()
 
     // Should see ADMIN badge
-    await expect(page.getByText("ADMIN")).toBeVisible()
+    await expect(page.getByRole("button", { name: /open user menu/i })).toContainText("ADMIN")
   })
 
-  test("RECRUITER can access job creation", async ({ recruiterPage: page }) => {
-    await page.goto("/jobs")
-    await page.waitForLoadState("networkidle")
+  test("RECRUITER can access job creation", async ({ page, loginAs }) => {
+    await loginAs(page, "RECRUITER")
+    await goto(page, "/jobs")
 
     // Should see RECRUITER badge
-    await expect(page.getByText("RECRUITER")).toBeVisible()
+    await expect(page.getByRole("button", { name: /open user menu/i })).toContainText("RECRUITER")
 
     // Should see create button (recruiters can create)
     await expect(page.getByRole("link", { name: /new job/i }).or(
@@ -198,9 +201,9 @@ test.describe("Role-based Access", () => {
     )).toBeVisible()
   })
 
-  test("RECRUITER can access candidate creation", async ({ recruiterPage: page }) => {
-    await page.goto("/candidates")
-    await page.waitForLoadState("networkidle")
+  test("RECRUITER can access candidate creation", async ({ page, loginAs }) => {
+    await loginAs(page, "RECRUITER")
+    await goto(page, "/candidates")
 
     // Should see create button
     await expect(page.getByRole("link", { name: /new candidate/i }).or(
@@ -208,37 +211,35 @@ test.describe("Role-based Access", () => {
     )).toBeVisible()
   })
 
-  test("VIEWER cannot see create buttons", async ({ viewerPage: page }) => {
-    await page.goto("/jobs")
-    await page.waitForLoadState("networkidle")
+  test("VIEWER cannot see create buttons", async ({ page, loginAs }) => {
+    await loginAs(page, "VIEWER")
+    await goto(page, "/jobs")
 
     // Should see VIEWER badge
-    await expect(page.getByText("VIEWER")).toBeVisible()
+    await expect(page.getByRole("button", { name: /open user menu/i })).toContainText("VIEWER")
 
     // Should NOT see create button
     await expect(page.getByRole("link", { name: /new job/i })).not.toBeVisible()
     await expect(page.getByRole("button", { name: /create/i })).not.toBeVisible()
   })
 
-  test("VIEWER cannot create jobs via direct URL", async ({ viewerPage: page }) => {
+  test("VIEWER cannot create jobs via direct URL", async ({ page, loginAs }) => {
+    await loginAs(page, "VIEWER")
     // Try to access create job page directly
-    await page.goto("/jobs/new")
-    await page.waitForLoadState("networkidle")
+    await goto(page, "/jobs/new")
 
-    // Should be redirected or see error (depending on implementation)
-    // Could redirect to /jobs or show an error
-    const url = page.url()
-    const hasError = await page.getByText(/unauthorized|forbidden|not allowed/i).isVisible().catch(() => false)
-
-    expect(url.includes("/jobs/new") && !hasError).toBeFalsy()
+    // Should not remain on the create page.
+    await expect
+      .poll(() => new URL(page.url()).pathname, { timeout: 10000 })
+      .not.toBe("/jobs/new")
   })
 })
 
 test.describe("Navigation", () => {
-  test("can navigate between pages when authenticated", async ({ recruiterPage: page }) => {
+  test("can navigate between pages when authenticated", async ({ page, loginAs }) => {
+    await loginAs(page, "RECRUITER")
     // Start at dashboard
-    await page.goto("/")
-    await page.waitForLoadState("networkidle")
+    await goto(page, "/")
 
     // Navigate to Jobs
     await page.click('a[href="/jobs"]')

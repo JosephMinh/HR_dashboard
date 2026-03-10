@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test"
 
-const port = 3000
+const port = Number(process.env.PLAYWRIGHT_PORT ?? 3000)
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`
+const testDatabaseUrl =
+  process.env.DATABASE_URL_TEST ??
+  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test"
 
 export default defineConfig({
   testDir: "./__tests__/e2e",
@@ -39,9 +42,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run dev -- --hostname 127.0.0.1 --port ${port}`,
+    command: `DATABASE_URL="${testDatabaseUrl}" npm run dev -- --hostname 127.0.0.1 --port ${port}`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // Reusing an existing dev server can point tests at the wrong database.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 })

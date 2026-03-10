@@ -8,7 +8,7 @@
 import { PrismaClient } from "@/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { hash } from "bcryptjs"
-import { TEST_USERS, type UserRole } from "./auth"
+import { TEST_USERS, getTestPassword } from "./auth"
 
 // Use the test database URL
 const TEST_DATABASE_URL =
@@ -63,7 +63,7 @@ export async function resetE2EDatabase(): Promise<void> {
  */
 export async function seedTestUsers(): Promise<void> {
   const prisma = getE2EPrisma()
-  const passwordHash = await hash("testpassword123", 10)
+  const passwordHash = await hash(getTestPassword(), 10)
 
   const users = Object.values(TEST_USERS)
 
@@ -92,6 +92,7 @@ export async function seedTestJobs(count = 5): Promise<string[]> {
   const departments = ["Engineering", "Product", "Design", "Marketing", "Sales"]
   const statuses = ["OPEN", "CLOSED", "ON_HOLD"] as const
   const priorities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const
+  const pipelineHealthLevels = ["BEHIND", "ON_TRACK", "AHEAD"] as const
 
   const jobIds: string[] = []
 
@@ -99,6 +100,7 @@ export async function seedTestJobs(count = 5): Promise<string[]> {
     const department = departments[i % departments.length]!
     const status = statuses[i % statuses.length]!
     const priority = priorities[i % priorities.length]!
+    const pipelineHealth = pipelineHealthLevels[i % pipelineHealthLevels.length]!
 
     const job = await prisma.job.create({
       data: {
@@ -108,7 +110,7 @@ export async function seedTestJobs(count = 5): Promise<string[]> {
         location: i % 2 === 0 ? "Remote" : "San Francisco, CA",
         status,
         priority,
-        pipelineHealth: i % 3 === 0 ? "BEHIND" : i % 3 === 1 ? "ON_TRACK" : "AHEAD",
+        pipelineHealth,
         isCritical: i === 0,
         openedAt: new Date(),
       },
@@ -126,6 +128,7 @@ export async function seedTestJobs(count = 5): Promise<string[]> {
 export async function seedTestCandidates(count = 10): Promise<string[]> {
   const prisma = getE2EPrisma()
   const sources = ["REFERRAL", "LINKEDIN", "CAREERS_PAGE", "AGENCY", "OTHER"] as const
+  const locations = ["New York, NY", "Austin, TX", "Seattle, WA"] as const
 
   const firstNames = ["Alice", "Bob", "Carol", "David", "Eve", "Frank", "Grace", "Henry", "Ivy", "Jack"]
   const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Martinez", "Taylor"]
@@ -136,6 +139,7 @@ export async function seedTestCandidates(count = 10): Promise<string[]> {
     const firstName = firstNames[i % firstNames.length]!
     const lastName = lastNames[i % lastNames.length]!
     const source = sources[i % sources.length]!
+    const location = locations[i % locations.length]!
 
     const candidate = await prisma.candidate.create({
       data: {
@@ -144,7 +148,7 @@ export async function seedTestCandidates(count = 10): Promise<string[]> {
         email: `candidate${i + 1}@example.com`,
         phone: `+1 555-000-${String(i + 1).padStart(4, "0")}`,
         currentCompany: i % 2 === 0 ? `Company ${i}` : null,
-        location: i % 3 === 0 ? "New York, NY" : i % 3 === 1 ? "Austin, TX" : "Seattle, WA",
+        location,
         source,
         linkedinUrl: `https://linkedin.com/in/candidate${i + 1}`,
       },

@@ -8,14 +8,13 @@
  * 4. Pre-authenticate test users
  */
 
-import { chromium, type FullConfig } from "@playwright/test"
 import { execSync } from "node:child_process"
+import { clearAuthStorage } from "./utils/auth"
 import {
   getE2EPrisma,
   seedCompleteTestScenario,
   resetE2EDatabase,
 } from "./utils/database"
-import { clearAuthStorage, getAuthenticatedContext, TEST_USERS } from "./utils/auth"
 
 const TEST_DATABASE_URL =
   process.env.DATABASE_URL_TEST ??
@@ -57,40 +56,17 @@ async function pushSchema(): Promise<void> {
   }
 }
 
-async function preAuthenticateUsers(baseUrl: string): Promise<void> {
-  console.log("[E2E-SETUP] Pre-authenticating test users...")
-
-  // Clear any stale auth storage
-  clearAuthStorage()
-
-  const browser = await chromium.launch()
-
-  try {
-    // Pre-authenticate each role
-    for (const role of Object.keys(TEST_USERS) as Array<keyof typeof TEST_USERS>) {
-      console.log(`[E2E-SETUP] Authenticating ${role}...`)
-      const context = await getAuthenticatedContext(browser, role, baseUrl, {
-        forceLogin: true,
-      })
-      await context.close()
-    }
-
-    console.log("[E2E-SETUP] All users pre-authenticated")
-  } finally {
-    await browser.close()
-  }
-}
-
-export default async function globalSetup(config: FullConfig): Promise<void> {
+export default async function globalSetup(): Promise<void> {
   console.log("\n" + "=".repeat(60))
   console.log(" E2E Test Suite - Global Setup")
   console.log("=".repeat(60))
   console.log(`Started at: ${new Date().toISOString()}`)
   console.log("")
 
-  const baseUrl = config.projects[0]?.use?.baseURL ?? "http://127.0.0.1:3000"
-
   try {
+    // Clear cached auth state up front so contexts cannot be reused across DB resets.
+    clearAuthStorage()
+
     // 1. Wait for database
     await waitForDatabase()
 

@@ -5,19 +5,37 @@
  * and is always accessible regardless of where the candidate row is located.
  */
 
-import { test, expect } from "./fixtures"
+import { test, expect, type TestFixtures } from "./fixtures"
+
+async function getJobWithCandidatesId(prisma: TestFixtures["prisma"]) {
+  const job = await prisma.job.findFirst({
+    where: {
+      applications: {
+        some: {},
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    select: {
+      id: true,
+    },
+  })
+
+  return job?.id ?? null
+}
 
 test.describe("Stage Dropdown Positioning", () => {
-  test("dropdown is fully visible when near bottom of viewport", async ({ recruiterPage: page }) => {
-    await page.goto("/jobs")
+  test("dropdown is fully visible when near bottom of viewport", async ({ recruiterPage: page, prisma }) => {
+    const jobId = await getJobWithCandidatesId(prisma)
+    if (!jobId) {
+      test.skip()
+      return
+    }
+
+    await page.goto(`/jobs/${jobId}`)
     await page.waitForLoadState("networkidle")
 
-    // Click on first job to go to detail page
-    const jobLink = page.locator("table tbody tr a").first()
-    await jobLink.click()
-    await page.waitForLoadState("networkidle")
-
-    // Check if there are candidates
     const candidateRows = page.locator('[data-testid="candidate-row"]')
     const rowCount = await candidateRows.count()
 
@@ -63,13 +81,14 @@ test.describe("Stage Dropdown Positioning", () => {
     }
   })
 
-  test("all dropdown menu items are clickable", async ({ recruiterPage: page }) => {
-    await page.goto("/jobs")
-    await page.waitForLoadState("networkidle")
+  test("all dropdown menu items are clickable", async ({ recruiterPage: page, prisma }) => {
+    const jobId = await getJobWithCandidatesId(prisma)
+    if (!jobId) {
+      test.skip()
+      return
+    }
 
-    // Click on first job
-    const jobLink = page.locator("table tbody tr a").first()
-    await jobLink.click()
+    await page.goto(`/jobs/${jobId}`)
     await page.waitForLoadState("networkidle")
 
     // Find a candidate row with dropdown
@@ -107,13 +126,14 @@ test.describe("Stage Dropdown Positioning", () => {
     }
   })
 
-  test("dropdown closes after selecting a stage", async ({ recruiterPage: page }) => {
-    await page.goto("/jobs")
-    await page.waitForLoadState("networkidle")
+  test("dropdown closes after selecting a stage", async ({ recruiterPage: page, prisma }) => {
+    const jobId = await getJobWithCandidatesId(prisma)
+    if (!jobId) {
+      test.skip()
+      return
+    }
 
-    // Click on first job
-    const jobLink = page.locator("table tbody tr a").first()
-    await jobLink.click()
+    await page.goto(`/jobs/${jobId}`)
     await page.waitForLoadState("networkidle")
 
     // Find dropdown trigger
@@ -125,8 +145,8 @@ test.describe("Stage Dropdown Positioning", () => {
       return
     }
 
-    // Get current stage
-    const currentStage = await trigger.textContent()
+    // Get current stage text (trim to remove any whitespace from chevron icon)
+    const currentStageText = (await trigger.textContent())?.trim()
 
     await trigger.click()
 
@@ -138,12 +158,12 @@ test.describe("Stage Dropdown Positioning", () => {
     const menuItems = dropdown.locator('[role="menuitem"], [data-slot="dropdown-menu-item"]')
     const itemCount = await menuItems.count()
 
-    if (itemCount > 1) {
+    if (itemCount > 1 && currentStageText) {
       // Find a different stage to select
       for (let i = 0; i < itemCount; i++) {
         const item = menuItems.nth(i)
-        const text = await item.textContent()
-        if (text && !text.includes(currentStage || "")) {
+        const text = (await item.textContent())?.trim()
+        if (text && text !== currentStageText) {
           await item.click()
           break
         }
@@ -154,13 +174,14 @@ test.describe("Stage Dropdown Positioning", () => {
     }
   })
 
-  test("dropdown closes on Escape key", async ({ recruiterPage: page }) => {
-    await page.goto("/jobs")
-    await page.waitForLoadState("networkidle")
+  test("dropdown closes on Escape key", async ({ recruiterPage: page, prisma }) => {
+    const jobId = await getJobWithCandidatesId(prisma)
+    if (!jobId) {
+      test.skip()
+      return
+    }
 
-    // Click on first job
-    const jobLink = page.locator("table tbody tr a").first()
-    await jobLink.click()
+    await page.goto(`/jobs/${jobId}`)
     await page.waitForLoadState("networkidle")
 
     // Find dropdown trigger
@@ -185,13 +206,14 @@ test.describe("Stage Dropdown Positioning", () => {
     await expect(dropdown).not.toBeVisible({ timeout: 3000 })
   })
 
-  test("dropdown closes when clicking outside", async ({ recruiterPage: page }) => {
-    await page.goto("/jobs")
-    await page.waitForLoadState("networkidle")
+  test("dropdown closes when clicking outside", async ({ recruiterPage: page, prisma }) => {
+    const jobId = await getJobWithCandidatesId(prisma)
+    if (!jobId) {
+      test.skip()
+      return
+    }
 
-    // Click on first job
-    const jobLink = page.locator("table tbody tr a").first()
-    await jobLink.click()
+    await page.goto(`/jobs/${jobId}`)
     await page.waitForLoadState("networkidle")
 
     // Find dropdown trigger
