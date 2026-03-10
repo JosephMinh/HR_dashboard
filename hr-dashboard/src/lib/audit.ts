@@ -1,3 +1,5 @@
+import { Prisma } from '@/generated/prisma/client'
+
 import { prisma } from './prisma'
 
 // Audit action types
@@ -5,8 +7,10 @@ export type AuditAction =
   | 'JOB_CREATED'
   | 'JOB_UPDATED'
   | 'JOB_CLOSED'
+  | 'JOB_DELETED'
   | 'CANDIDATE_CREATED'
   | 'CANDIDATE_UPDATED'
+  | 'CANDIDATE_DELETED'
   | 'APPLICATION_CREATED'
   | 'APPLICATION_UPDATED'
   | 'APPLICATION_DELETED'
@@ -48,6 +52,29 @@ export async function logAudit(params: AuditLogParams): Promise<void> {
       },
     })
   } catch (error) {
+    if (
+      params.userId !== null &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2003'
+    ) {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            userId: null,
+            action: params.action,
+            entityType: params.entityType,
+            entityId: params.entityId,
+            beforeJson: params.before ?? undefined,
+            afterJson: params.after ?? undefined,
+            ipAddress: params.ipAddress ?? undefined,
+          },
+        })
+        return
+      } catch (retryError) {
+        console.error('[Audit] Failed to log audit entry after null-user retry:', retryError)
+      }
+    }
+
     // Log error but don't throw - audit logging should not break the main operation
     console.error('[Audit] Failed to log audit entry:', error)
   }

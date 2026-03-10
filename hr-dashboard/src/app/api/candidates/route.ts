@@ -6,6 +6,7 @@ import { getClientIp, logAuditCreate } from "@/lib/audit"
 import { AuthorizationError, requireMutate } from "@/lib/permissions"
 import { prisma } from "@/lib/prisma"
 import { isValidResumeKey } from "@/lib/storage"
+import { isValidEmail } from "@/lib/validations"
 
 type SortField = "name" | "email" | "updatedAt"
 type SortOrder = "asc" | "desc"
@@ -101,12 +102,27 @@ export async function GET(request: NextRequest) {
     pageSize = parsed
   }
 
-  const search = searchParams.get("search")?.trim() || ""
-  const sortParam = (searchParams.get("sort") || "name") as SortField
-  const sortField: SortField = ["name", "email", "updatedAt"].includes(sortParam)
-    ? sortParam
-    : "name"
+  // Limit search length to prevent performance issues with very long queries
+  const search = searchParams.get("search")?.trim().slice(0, 200) || ""
+  const sortParam = searchParams.get("sort")
+  const allowedSortFields: SortField[] = ["name", "email", "updatedAt"]
+  if (sortParam !== null && !allowedSortFields.includes(sortParam as SortField)) {
+    return NextResponse.json(
+      { error: `Invalid sort parameter: must be one of ${allowedSortFields.join(", ")}` },
+      { status: 400 }
+    )
+  }
+  const sortField: SortField =
+    sortParam !== null && allowedSortFields.includes(sortParam as SortField)
+      ? (sortParam as SortField)
+      : "name"
   const orderParam = searchParams.get("order")
+  if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
+    return NextResponse.json(
+      { error: 'Invalid order parameter: must be "asc" or "desc"' },
+      { status: 400 }
+    )
+  }
   const sortOrder: SortOrder = orderParam === "desc" ? "desc" : "asc"
   const includeJobCount = searchParams.get("includeJobCount") === "true"
 
@@ -237,24 +253,45 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  if (!body.firstName?.trim()) {
+  // Validate required fields with length constraints
+  const firstName = body.firstName?.trim()
+  if (!firstName) {
     return NextResponse.json({ error: "First name is required" }, { status: 400 })
   }
-  if (!body.lastName?.trim()) {
+  if (firstName.length > 100) {
+    return NextResponse.json({ error: "First name must be at most 100 characters" }, { status: 400 })
+  }
+
+  const lastName = body.lastName?.trim()
+  if (!lastName) {
     return NextResponse.json({ error: "Last name is required" }, { status: 400 })
   }
+  if (lastName.length > 100) {
+    return NextResponse.json({ error: "Last name must be at most 100 characters" }, { status: 400 })
+  }
+
   if (body.source && !Object.values(CandidateSource).includes(body.source)) {
     return NextResponse.json({ error: "Invalid source" }, { status: 400 })
   }
-  if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
+  if (body.email && !isValidEmail(body.email)) {
     return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
   }
   if (body.linkedinUrl) {
     try {
-      new URL(body.linkedinUrl)
+      const url = new URL(body.linkedinUrl)
+      // Validate that it's a LinkedIn URL - accept main domain and country-specific subdomains
+      // Examples: linkedin.com, www.linkedin.com, in.linkedin.com, uk.linkedin.com
+      const hostname = url.hostname.toLowerCase()
+      const isLinkedIn = hostname === 'linkedin.com' || hostname.endsWith('.linkedin.com')
+      if (!isLinkedIn) {
+        return NextResponse.json({ error: "URL must be a LinkedIn profile" }, { status: 400 })
+      }
     } catch {
       return NextResponse.json({ error: "Invalid LinkedIn URL" }, { status: 400 })
     }
+  }
+  if (body.notes && body.notes.length > 10000) {
+    return NextResponse.json({ error: "Notes must be at most 10000 characters" }, { status: 400 })
   }
 
   const { jobId } = body
@@ -276,8 +313,8 @@ export async function POST(request: NextRequest) {
   }
 
   const candidateData = {
-    firstName: body.firstName.trim(),
-    lastName: body.lastName.trim(),
+    firstName,
+    lastName,
     email: body.email?.trim() || null,
     phone: body.phone?.trim() || null,
     linkedinUrl: body.linkedinUrl?.trim() || null,

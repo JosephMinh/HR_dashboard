@@ -58,7 +58,8 @@ export async function GET(request: NextRequest) {
   const departmentParam = searchParams.get('department')
   const pipelineHealthParam = searchParams.get('pipelineHealth')
   const criticalParam = searchParams.get('critical')
-  const search = searchParams.get('search')
+  // Limit search length to prevent performance issues with very long queries
+  const search = searchParams.get('search')?.slice(0, 200) ?? null
   const sortParam = searchParams.get('sort') as SortField | null
   const allowedSortFields: SortField[] = [
     'title',
@@ -253,15 +254,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Validate required fields
-  if (!body.title?.trim()) {
+  // Validate required fields with length constraints matching client-side validation
+  const title = body.title?.trim()
+  if (!title) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 })
   }
-  if (!body.department?.trim()) {
+  if (title.length < 3) {
+    return NextResponse.json({ error: 'Title must be at least 3 characters' }, { status: 400 })
+  }
+  if (title.length > 200) {
+    return NextResponse.json({ error: 'Title must be at most 200 characters' }, { status: 400 })
+  }
+
+  const department = body.department?.trim()
+  if (!department) {
     return NextResponse.json({ error: 'Department is required' }, { status: 400 })
   }
-  if (!body.description?.trim()) {
+  if (department.length > 100) {
+    return NextResponse.json({ error: 'Department must be at most 100 characters' }, { status: 400 })
+  }
+
+  const description = body.description?.trim()
+  if (!description) {
     return NextResponse.json({ error: 'Description is required' }, { status: 400 })
+  }
+  if (description.length < 10) {
+    return NextResponse.json({ error: 'Description must be at least 10 characters' }, { status: 400 })
+  }
+  if (description.length > 10000) {
+    return NextResponse.json({ error: 'Description must be at most 10000 characters' }, { status: 400 })
   }
 
   // Validate enums if provided
@@ -273,6 +294,9 @@ export async function POST(request: NextRequest) {
   }
   if (body.pipelineHealth && !Object.values(PipelineHealth).includes(body.pipelineHealth)) {
     return NextResponse.json({ error: 'Invalid pipeline health' }, { status: 400 })
+  }
+  if (body.isCritical !== undefined && typeof body.isCritical !== 'boolean') {
+    return NextResponse.json({ error: 'isCritical must be a boolean' }, { status: 400 })
   }
 
   // Parse dates
@@ -308,11 +332,22 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Create job
+  // Validate optional field lengths
+  if (body.location && body.location.length > 200) {
+    return NextResponse.json({ error: 'Location must be at most 200 characters' }, { status: 400 })
+  }
+  if (body.hiringManager && body.hiringManager.length > 100) {
+    return NextResponse.json({ error: 'Hiring manager must be at most 100 characters' }, { status: 400 })
+  }
+  if (body.recruiterOwner && body.recruiterOwner.length > 100) {
+    return NextResponse.json({ error: 'Recruiter owner must be at most 100 characters' }, { status: 400 })
+  }
+
+  // Create job (using already-validated and trimmed values)
   const jobData = {
-    title: body.title.trim(),
-    department: body.department.trim(),
-    description: body.description.trim(),
+    title,
+    department,
+    description,
     location: body.location?.trim() || null,
     hiringManager: body.hiringManager?.trim() || null,
     recruiterOwner: body.recruiterOwner?.trim() || null,

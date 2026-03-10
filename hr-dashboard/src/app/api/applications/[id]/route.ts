@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { getClientIp, logAuditUpdate, logAuditDelete } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { AuthorizationError, requireMutate } from '@/lib/permissions'
+import { isValidUUID } from '@/lib/validations'
 import { ApplicationStage } from '@/generated/prisma/client'
 
 interface RouteParams {
@@ -32,6 +33,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const { id } = await params
 
+  // Validate ID format early to avoid unnecessary DB queries
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid application ID format' }, { status: 400 })
+  }
+
   // Check application exists
   const existing = await prisma.application.findUnique({ where: { id } })
   if (!existing) {
@@ -48,6 +54,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   // Validate stage enum if provided
   if (body.stage !== undefined && !Object.values(ApplicationStage).includes(body.stage)) {
     return NextResponse.json({ error: 'Invalid stage' }, { status: 400 })
+  }
+
+  // Validate field lengths
+  if (body.recruiterOwner && body.recruiterOwner.length > 100) {
+    return NextResponse.json(
+      { error: 'Recruiter owner must be at most 100 characters' },
+      { status: 400 }
+    )
+  }
+  if (body.interviewNotes && body.interviewNotes.length > 50000) {
+    return NextResponse.json(
+      { error: 'Interview notes must be at most 50000 characters' },
+      { status: 400 }
+    )
   }
 
   // Build update data
@@ -146,6 +166,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { id } = await params
+
+  // Validate ID format early to avoid unnecessary DB queries
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid application ID format' }, { status: 400 })
+  }
 
   // Check application exists
   const existing = await prisma.application.findUnique({ where: { id } })

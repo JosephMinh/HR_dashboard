@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { getClientIp, logAuditCreate } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { AuthorizationError, requireMutate } from '@/lib/permissions'
+import { isValidUUID } from '@/lib/validations'
 import { ApplicationStage } from '@/generated/prisma/client'
 import { Prisma } from '@/generated/prisma/client'
 
@@ -44,6 +45,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Candidate ID is required' }, { status: 400 })
   }
 
+  // Validate UUID format (prevents unnecessary DB queries with malformed IDs)
+  if (!isValidUUID(body.jobId)) {
+    return NextResponse.json({ error: 'Invalid job ID format' }, { status: 400 })
+  }
+  if (!isValidUUID(body.candidateId)) {
+    return NextResponse.json({ error: 'Invalid candidate ID format' }, { status: 400 })
+  }
+
   // Validate stage enum if provided
   if (body.stage && !Object.values(ApplicationStage).includes(body.stage)) {
     return NextResponse.json({ error: 'Invalid stage' }, { status: 400 })
@@ -72,6 +81,20 @@ export async function POST(request: NextRequest) {
   })
   if (existing) {
     return NextResponse.json({ error: 'Candidate is already applied to this job' }, { status: 409 })
+  }
+
+  // Validate field lengths
+  if (body.recruiterOwner && body.recruiterOwner.length > 100) {
+    return NextResponse.json(
+      { error: 'Recruiter owner must be at most 100 characters' },
+      { status: 400 }
+    )
+  }
+  if (body.interviewNotes && body.interviewNotes.length > 50000) {
+    return NextResponse.json(
+      { error: 'Interview notes must be at most 50000 characters' },
+      { status: 400 }
+    )
   }
 
   // Create application

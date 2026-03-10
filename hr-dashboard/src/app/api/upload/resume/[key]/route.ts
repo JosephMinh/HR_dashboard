@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { canUploadResume } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { generateDownloadUrl, isValidResumeKey } from '@/lib/storage'
 
@@ -11,6 +12,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const session = await auth()
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Only users who can upload resumes (ADMIN, RECRUITER) can download them
+  // VIEWER role cannot access candidate resumes
+  if (!canUploadResume(session.user.role)) {
+    return NextResponse.json(
+      { error: 'You do not have permission to access resumes' },
+      { status: 403 }
+    )
   }
 
   const { key } = await params

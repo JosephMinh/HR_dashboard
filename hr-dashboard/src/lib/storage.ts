@@ -76,6 +76,12 @@ export function validateStorageConfig(): StorageConfigStatus {
     issues.push('AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set together.')
   }
 
+  if (endpoint && !accessKeyId && !secretAccessKey) {
+    issues.push(
+      'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required when STORAGE_ENDPOINT is set.',
+    )
+  }
+
   if (!endpoint && !accessKeyId && !secretAccessKey) {
     warnings.push(
       'AWS credentials are not explicitly set. Ensure the runtime provides credentials via IAM or the default AWS credential chain.',
@@ -180,7 +186,11 @@ export async function generateUploadUrl(
     ContentType: contentType,
   })
 
-  return getSignedUrl(client, command, { expiresIn: expiresInSeconds })
+  return getSignedUrl(client, command, {
+    expiresIn: expiresInSeconds,
+    // Sign the Content-Type header to prevent content-type spoofing
+    signableHeaders: new Set(['content-type']),
+  })
 }
 
 /**

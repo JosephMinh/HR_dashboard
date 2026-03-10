@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { getClientIp, logAuditUpdate } from '@/lib/audit'
+import { getClientIp, logAuditUpdate, logAuditDelete } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { AuthorizationError, requireMutate } from '@/lib/permissions'
+import { isValidUUID } from '@/lib/validations'
 import { JobStatus, JobPriority, PipelineHealth, ApplicationStage } from '@/generated/prisma/client'
 
 const INACTIVE_STAGES: ApplicationStage[] = [
@@ -32,6 +33,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   const { id } = await params
+
+  // Validate ID format early to avoid unnecessary DB queries
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid job ID format' }, { status: 400 })
+  }
 
   const job = await prisma.job.findUnique({
     where: { id },
@@ -130,6 +136,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const { id } = await params
 
+  // Validate ID format early to avoid unnecessary DB queries
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid job ID format' }, { status: 400 })
+  }
+
   // Check job exists
   const existing = await prisma.job.findUnique({ where: { id } })
   if (!existing) {
@@ -158,30 +169,57 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const data: Record<string, unknown> = {}
 
   if (body.title !== undefined) {
-    if (!body.title.trim()) {
+    const title = body.title.trim()
+    if (!title) {
       return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 })
     }
-    data.title = body.title.trim()
+    if (title.length < 3) {
+      return NextResponse.json({ error: 'Title must be at least 3 characters' }, { status: 400 })
+    }
+    if (title.length > 200) {
+      return NextResponse.json({ error: 'Title must be at most 200 characters' }, { status: 400 })
+    }
+    data.title = title
   }
   if (body.department !== undefined) {
-    if (!body.department.trim()) {
+    const department = body.department.trim()
+    if (!department) {
       return NextResponse.json({ error: 'Department cannot be empty' }, { status: 400 })
     }
-    data.department = body.department.trim()
+    if (department.length > 100) {
+      return NextResponse.json({ error: 'Department must be at most 100 characters' }, { status: 400 })
+    }
+    data.department = department
   }
   if (body.description !== undefined) {
-    if (!body.description.trim()) {
+    const description = body.description.trim()
+    if (!description) {
       return NextResponse.json({ error: 'Description cannot be empty' }, { status: 400 })
     }
-    data.description = body.description.trim()
+    if (description.length < 10) {
+      return NextResponse.json({ error: 'Description must be at least 10 characters' }, { status: 400 })
+    }
+    if (description.length > 10000) {
+      return NextResponse.json({ error: 'Description must be at most 10000 characters' }, { status: 400 })
+    }
+    data.description = description
   }
   if (body.location !== undefined) {
+    if (body.location && body.location.length > 200) {
+      return NextResponse.json({ error: 'Location must be at most 200 characters' }, { status: 400 })
+    }
     data.location = body.location?.trim() || null
   }
   if (body.hiringManager !== undefined) {
+    if (body.hiringManager && body.hiringManager.length > 100) {
+      return NextResponse.json({ error: 'Hiring manager must be at most 100 characters' }, { status: 400 })
+    }
     data.hiringManager = body.hiringManager?.trim() || null
   }
   if (body.recruiterOwner !== undefined) {
+    if (body.recruiterOwner && body.recruiterOwner.length > 100) {
+      return NextResponse.json({ error: 'Recruiter owner must be at most 100 characters' }, { status: 400 })
+    }
     data.recruiterOwner = body.recruiterOwner?.trim() || null
   }
   if (body.status !== undefined) {
@@ -352,4 +390,58 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
   })
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const session = await auth()
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    requireMutate(session.user.role)
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: 403 })
+    }
+    throw error
+  }
+
+  const { id } = await params
+
+  // Validate ID format early to avoid unnecessary DB queries
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid job ID format' }, { status: 400 })
+  }
+
+  // Check job exists and get application count for audit
+  const existing = await prisma.job.findUnique({
+    where: { id },
+    include: {
+      _count: { select: { applications: true } },
+    },
+  })
+  if (!existing) {
+    return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+  }
+
+  // Delete job (applications cascade delete per schema)
+  await prisma.job.delete({ where: { id } })
+
+  // Audit log
+  await logAuditDelete({
+    userId: session.user.id ?? null,
+    action: 'JOB_DELETED',
+    entityType: 'Job',
+    entityId: id,
+    deleted: {
+      title: existing.title,
+      department: existing.department,
+      status: existing.status,
+      applicationCount: existing._count.applications,
+    },
+    ipAddress: getClientIp(request),
+  })
+
+  return NextResponse.json({ success: true })
 }
