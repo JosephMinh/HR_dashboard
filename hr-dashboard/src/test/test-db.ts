@@ -12,7 +12,7 @@ import { execSync } from "node:child_process"
 // Test database URL - uses port 5433 to avoid conflicts with dev
 const TEST_DATABASE_URL =
   process.env.DATABASE_URL_TEST ??
-  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test?schema=test"
+  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test"
 
 // Set DATABASE_URL for Prisma to use
 process.env.DATABASE_URL = TEST_DATABASE_URL

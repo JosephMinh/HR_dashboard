@@ -450,6 +450,67 @@ describe('API auth enforcement', () => {
     )
   })
 
+  it('returns 503 with config details when upload storage is misconfigured', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'recruiter-1', role: 'RECRUITER' },
+    })
+    generateUploadUrlMock.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'Storage configuration invalid. Missing required storage environment variables: STORAGE_BUCKET',
+        ),
+        {
+          name: 'StorageConfigError',
+          missing: ['STORAGE_BUCKET'],
+          issues: [],
+          warnings: [
+            'AWS credentials are not explicitly set. Ensure the runtime provides credentials via IAM or the default AWS credential chain.',
+          ],
+        },
+      ),
+    )
+
+    const { POST } = await import('@/app/api/upload/resume/route')
+    const response = await POST(
+      new Request('http://localhost/api/upload/resume', {
+        method: 'POST',
+        body: JSON.stringify({ filename: 'resume.pdf' }),
+      }) as never,
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: 'Resume storage is not configured correctly',
+      details:
+        'Storage configuration invalid. Missing required storage environment variables: STORAGE_BUCKET',
+      missing: ['STORAGE_BUCKET'],
+      issues: [],
+      warnings: [
+        'AWS credentials are not explicitly set. Ensure the runtime provides credentials via IAM or the default AWS credential chain.',
+      ],
+    })
+  })
+
+  it('returns 500 for unexpected upload URL failures', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'recruiter-1', role: 'RECRUITER' },
+    })
+    generateUploadUrlMock.mockRejectedValueOnce(new Error('S3 timeout'))
+
+    const { POST } = await import('@/app/api/upload/resume/route')
+    const response = await POST(
+      new Request('http://localhost/api/upload/resume', {
+        method: 'POST',
+        body: JSON.stringify({ filename: 'resume.pdf' }),
+      }) as never,
+    )
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({
+      error: 'Failed to generate upload URL',
+    })
+  })
+
   it('rejects invalid resume download keys', async () => {
     authMock.mockResolvedValue({
       user: { id: 'recruiter-1', role: 'RECRUITER' },

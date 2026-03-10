@@ -63,6 +63,33 @@ test.describe("Jobs List Page", () => {
     await expect(page).toHaveURL(/search=Engineer/)
   })
 
+  test("rapid typing preserves the full jobs search value", async ({ recruiterPage: page }) => {
+    await page.goto("/jobs")
+    await page.waitForLoadState("networkidle")
+
+    const searchInput = page.getByPlaceholder("Search jobs...")
+    await searchInput.pressSequentially("principal engineer", { delay: 10 })
+
+    await expect(searchInput).toHaveValue("principal engineer")
+    await expect(page).toHaveURL(/search=principal(\+|%20)engineer/)
+  })
+
+  test("browser navigation restores jobs search history", async ({ recruiterPage: page }) => {
+    await page.goto("/jobs")
+    await page.waitForLoadState("networkidle")
+
+    const searchInput = page.getByPlaceholder("Search jobs...")
+
+    await searchInput.fill("Engineer")
+    await expect(page).toHaveURL(/search=Engineer/)
+
+    await searchInput.fill("Product")
+    await expect(page).toHaveURL(/search=Product/)
+
+    await page.goBack()
+    await expect(searchInput).toHaveValue("Engineer")
+  })
+
   test("clear filters resets all filters", async ({ recruiterPage: page }) => {
     // Start with filters
     await page.goto("/jobs?status=OPEN&search=test")

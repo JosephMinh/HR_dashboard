@@ -14,6 +14,17 @@ interface UploadRequestBody {
   contentType?: string
 }
 
+interface StorageConfigErrorLike extends Error {
+  missing?: unknown
+  issues?: unknown
+  warnings?: unknown
+  status?: {
+    missing?: unknown
+    issues?: unknown
+    warnings?: unknown
+  }
+}
+
 function normalizeContentType(contentType: string): string {
   return contentType.split(';')[0]?.trim().toLowerCase() || ''
 }
@@ -21,6 +32,18 @@ function normalizeContentType(contentType: string): string {
 function isGenericBinaryContentType(contentType: string): boolean {
   const normalized = normalizeContentType(contentType)
   return normalized === 'application/octet-stream' || normalized === 'binary/octet-stream'
+}
+
+function isStorageConfigError(error: unknown): error is StorageConfigErrorLike {
+  return error instanceof Error && error.name === 'StorageConfigError'
+}
+
+function getStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.filter((item): item is string => typeof item === 'string')
 }
 
 export async function POST(request: NextRequest) {
@@ -83,6 +106,30 @@ export async function POST(request: NextRequest) {
       maxSizeBytes: MAX_RESUME_SIZE_BYTES,
     })
   } catch (error) {
+    if (isStorageConfigError(error)) {
+      const missing = getStringList(error.missing ?? error.status?.missing)
+      const issues = getStringList(error.issues ?? error.status?.issues)
+      const warnings = getStringList(error.warnings ?? error.status?.warnings)
+
+      console.error('Resume storage configuration error:', {
+        message: error.message,
+        missing,
+        issues,
+        warnings,
+      })
+
+      return NextResponse.json(
+        {
+          error: 'Resume storage is not configured correctly',
+          details: error.message,
+          missing,
+          issues,
+          warnings,
+        },
+        { status: 503 }
+      )
+    }
+
     console.error('Failed to generate upload URL:', error)
     return NextResponse.json(
       { error: 'Failed to generate upload URL' },

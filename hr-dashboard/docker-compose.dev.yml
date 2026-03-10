@@ -1,0 +1,53 @@
+# Docker Compose for HR Dashboard Local Development
+# Usage: docker compose -f docker-compose.dev.yml up -d
+#
+# Services:
+#   - postgres: Main development database
+#   - minio: S3-compatible storage for resume uploads
+#
+# Ports:
+#   - 5432: PostgreSQL
+#   - 9000: MinIO API
+#   - 9001: MinIO Console (web UI)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hr-dashboard-dev-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hr_dashboard
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: hr-dashboard-dev-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-dev-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-dev-data:
+  minio-dev-data:

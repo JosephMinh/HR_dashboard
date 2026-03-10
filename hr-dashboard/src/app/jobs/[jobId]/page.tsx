@@ -63,7 +63,7 @@ export default async function JobDetailPage({ params }: PageParams) {
       }}
     >
       <div className="space-y-6">
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-2">
           {job.isCritical && <AlertTriangle className="h-5 w-5 text-red-500" />}
           <div className="flex-1">
             <h1 className="text-2xl font-bold tracking-tight">{job.title}</h1>
@@ -173,7 +173,7 @@ export default async function JobDetailPage({ params }: PageParams) {
             ) : (
               <CandidatesPipeline
                 jobId={jobId}
-                applications={job.applications.map(app => ({
+                initialApplications={job.applications.map(app => ({
                   id: app.id,
                   stage: app.stage,
                   stageUpdatedAt: app.stageUpdatedAt.toISOString(),

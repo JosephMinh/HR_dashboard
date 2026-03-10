@@ -8,42 +8,131 @@ export interface StorageConfig {
   endpoint?: string
 }
 
+export interface StorageConfigStatus {
+  configured: boolean
+  valid: boolean
+  bucket: string | null
+  region: string
+  endpoint: string | null
+  missing: string[]
+  issues: string[]
+  warnings: string[]
+}
+
+interface ResolvedStorageConfig extends StorageConfig {
+  region: string
+  accessKeyId?: string
+  secretAccessKey?: string
+}
+
 const UPLOAD_URL_EXPIRY_SECONDS = 15 * 60 // 15 minutes
 const DOWNLOAD_URL_EXPIRY_SECONDS = 5 * 60 // 5 minutes
 const RESUME_KEY_REGEX = /^resumes\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(pdf|doc|docx|txt|rtf)$/i
 
-function getS3Client(): S3Client {
-  const endpoint = process.env.STORAGE_ENDPOINT
-  const region = process.env.STORAGE_REGION || 'us-east-1'
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+export class StorageConfigError extends Error {
+  readonly missing: string[]
+  readonly issues: string[]
+  readonly warnings: string[]
+  readonly status: StorageConfigStatus
+
+  constructor(status: StorageConfigStatus) {
+    const messageParts = [
+      status.missing.length > 0
+        ? `Missing required storage environment variables: ${status.missing.join(', ')}`
+        : null,
+      ...status.issues,
+      ...status.warnings,
+    ].filter((part): part is string => Boolean(part))
+
+    super(
+      messageParts.length > 0
+        ? `Storage configuration invalid. ${messageParts.join(' ')}`
+        : 'Storage configuration invalid.',
+    )
+    this.name = 'StorageConfigError'
+    this.missing = status.missing
+    this.issues = status.issues
+    this.warnings = status.warnings
+    this.status = status
+  }
+}
+
+export function validateStorageConfig(): StorageConfigStatus {
+  const bucket = process.env.STORAGE_BUCKET?.trim() || null
+  const region = process.env.STORAGE_REGION?.trim() || 'us-east-1'
+  const endpoint = process.env.STORAGE_ENDPOINT?.trim() || null
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim() || ''
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim() || ''
+
+  const missing: string[] = []
+  const issues: string[] = []
+  const warnings: string[] = []
+
+  if (!bucket) {
+    missing.push('STORAGE_BUCKET')
+  }
 
   if ((accessKeyId && !secretAccessKey) || (!accessKeyId && secretAccessKey)) {
-    throw new Error(
-      'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set together'
+    issues.push('AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set together.')
+  }
+
+  if (!endpoint && !accessKeyId && !secretAccessKey) {
+    warnings.push(
+      'AWS credentials are not explicitly set. Ensure the runtime provides credentials via IAM or the default AWS credential chain.',
     )
   }
 
-  return new S3Client({
+  return {
+    configured: bucket !== null,
+    valid: missing.length === 0 && issues.length === 0,
+    bucket,
     region,
-    ...(endpoint && { endpoint, forcePathStyle: true }),
-    ...(accessKeyId && secretAccessKey
+    endpoint,
+    missing,
+    issues,
+    warnings,
+  }
+}
+
+function resolveStorageConfig(): ResolvedStorageConfig {
+  const status = validateStorageConfig()
+
+  if (!status.valid || !status.bucket) {
+    throw new StorageConfigError(status)
+  }
+
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim() || undefined
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim() || undefined
+
+  return {
+    bucket: status.bucket,
+    region: status.region,
+    endpoint: status.endpoint ?? undefined,
+    accessKeyId,
+    secretAccessKey,
+  }
+}
+
+function createStorageContext() {
+  const config = resolveStorageConfig()
+
+  const client = new S3Client({
+    region: config.region,
+    ...(config.endpoint && { endpoint: config.endpoint, forcePathStyle: true }),
+    ...(config.accessKeyId && config.secretAccessKey
       ? {
           credentials: {
-            accessKeyId,
-            secretAccessKey,
+            accessKeyId: config.accessKeyId,
+            secretAccessKey: config.secretAccessKey,
           },
         }
       : {}),
   })
-}
 
-function getBucket(): string {
-  const bucket = process.env.STORAGE_BUCKET
-  if (!bucket) {
-    throw new Error('STORAGE_BUCKET environment variable is not set')
+  return {
+    bucket: config.bucket,
+    client,
   }
-  return bucket
 }
 
 /**
@@ -83,8 +172,7 @@ export async function generateUploadUrl(
   contentType: string,
   expiresInSeconds = UPLOAD_URL_EXPIRY_SECONDS
 ): Promise<string> {
-  const client = getS3Client()
-  const bucket = getBucket()
+  const { client, bucket } = createStorageContext()
 
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -106,8 +194,7 @@ export async function generateDownloadUrl(
   key: string,
   expiresInSeconds = DOWNLOAD_URL_EXPIRY_SECONDS
 ): Promise<string> {
-  const client = getS3Client()
-  const bucket = getBucket()
+  const { client, bucket } = createStorageContext()
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -123,8 +210,7 @@ export async function generateDownloadUrl(
  * @param key - Object key to delete
  */
 export async function deleteObject(key: string): Promise<void> {
-  const client = getS3Client()
-  const bucket = getBucket()
+  const { client, bucket } = createStorageContext()
 
   const command = new DeleteObjectCommand({
     Bucket: bucket,

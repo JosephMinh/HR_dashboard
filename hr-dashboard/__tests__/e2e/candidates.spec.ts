@@ -79,6 +79,36 @@ test.describe("Candidates List Page", () => {
     }
   })
 
+  test("rapid typing preserves the full search value and syncs the URL", async ({ recruiterPage: page }) => {
+    await page.goto("/candidates")
+    await page.waitForLoadState("networkidle")
+
+    const searchInput = page.getByPlaceholder("Search by name or email...")
+    await searchInput.pressSequentially("software engineer", { delay: 10 })
+
+    await expect(searchInput).toHaveValue("software engineer")
+    await expect(page).toHaveURL(/search=software(\+|%20)engineer/)
+  })
+
+  test("browser navigation restores previous search values", async ({ recruiterPage: page }) => {
+    await page.goto("/candidates")
+    await page.waitForLoadState("networkidle")
+
+    const searchInput = page.getByPlaceholder("Search by name or email...")
+
+    await searchInput.fill("Alice")
+    await expect(page).toHaveURL(/search=Alice/)
+
+    await searchInput.fill("Alice Smith")
+    await expect(page).toHaveURL(/search=Alice(\+|%20)Smith/)
+
+    await page.goBack()
+    await expect(searchInput).toHaveValue("Alice")
+
+    await page.goForward()
+    await expect(searchInput).toHaveValue("Alice Smith")
+  })
+
   test("clear search resets filters", async ({ recruiterPage: page }) => {
     await page.goto("/candidates?search=test")
     await page.waitForLoadState("networkidle")
@@ -88,6 +118,22 @@ test.describe("Candidates List Page", () => {
       await clearButton.click()
       await expect(page).not.toHaveURL(/search=/)
     }
+  })
+
+  test("clear search removes the query param and allows re-searching", async ({ recruiterPage: page }) => {
+    await page.goto("/candidates?search=Alice")
+    await page.waitForLoadState("networkidle")
+
+    const searchInput = page.getByPlaceholder("Search by name or email...")
+    await expect(searchInput).toHaveValue("Alice")
+
+    await page.getByRole("button", { name: "Clear search" }).click()
+    await expect(searchInput).toHaveValue("")
+    await expect(page).not.toHaveURL(/search=/)
+
+    await searchInput.fill("Developer")
+    await expect(searchInput).toHaveValue("Developer")
+    await expect(page).toHaveURL(/search=Developer/)
   })
 
   test("shows resume indicator", async ({ recruiterPage: page, prisma }) => {

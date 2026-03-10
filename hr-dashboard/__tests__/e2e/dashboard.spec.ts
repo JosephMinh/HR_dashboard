@@ -110,4 +110,20 @@ test.describe("Dashboard", () => {
 
     await expect(page.getByRole("heading", { name: /all jobs/i })).toBeVisible()
   })
+
+  test("dashboard jobs search preserves rapid typing and can be cleared", async ({ recruiterPage: page }) => {
+    await page.goto("/")
+    await page.waitForLoadState("networkidle")
+
+    const searchInput = page.getByPlaceholder("Search jobs...")
+    await searchInput.pressSequentially("operations manager", { delay: 10 })
+
+    await expect(searchInput).toHaveValue("operations manager")
+
+    const clearButton = page.getByRole("button", { name: "Clear search" })
+    await expect(clearButton).toBeVisible()
+    await clearButton.click()
+
+    await expect(searchInput).toHaveValue("")
+  })
 })

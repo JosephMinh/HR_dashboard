@@ -19,7 +19,7 @@ import { clearAuthStorage, getAuthenticatedContext, TEST_USERS } from "./utils/a
 
 const TEST_DATABASE_URL =
   process.env.DATABASE_URL_TEST ??
-  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test?schema=test"
+  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test"
 
 async function waitForDatabase(maxRetries = 30, delayMs = 1000): Promise<void> {
   const prisma = getE2EPrisma()
@@ -43,7 +43,7 @@ async function waitForDatabase(maxRetries = 30, delayMs = 1000): Promise<void> {
 async function pushSchema(): Promise<void> {
   console.log("[E2E-SETUP] Pushing Prisma schema to test database...")
   try {
-    execSync("npx prisma db push --skip-generate --accept-data-loss", {
+    execSync("npx prisma db push --accept-data-loss", {
       env: {
         ...process.env,
         DATABASE_URL: TEST_DATABASE_URL,

@@ -60,7 +60,7 @@ export default async function CandidateDetailPage({ params }: PageParams) {
       }}
     >
       <div className="space-y-6">
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4">
           <div className="flex-1">
             <h1 className="text-2xl font-bold tracking-tight">
               {candidate.firstName} {candidate.lastName}

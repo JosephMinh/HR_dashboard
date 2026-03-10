@@ -23,6 +23,12 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api-client"
 import { queryKeys } from "@/lib/query-keys"
 import { cn } from "@/lib/utils"
@@ -44,7 +50,8 @@ interface Application {
 
 interface CandidatesPipelineProps {
   jobId: string
-  applications: Application[]
+  /** Initial applications from server-side rendering */
+  initialApplications: Application[]
   userCanMutate: boolean
 }
 
@@ -63,14 +70,16 @@ interface JobDetailApplicationsResponse {
   }>
 }
 
-export function CandidatesPipeline({ jobId, applications, userCanMutate }: CandidatesPipelineProps) {
-  const [localApplications, setLocalApplications] = React.useState(applications)
+export function CandidatesPipeline({ jobId, initialApplications, userCanMutate }: CandidatesPipelineProps) {
   const [updatingId, setUpdatingId] = React.useState<string | null>(null)
   const [unlinkingId, setUnlinkingId] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const updateApplicationMutation = useUpdateApplicationMutation()
   const deleteApplicationMutation = useDeleteApplicationMutation()
-  const { data: latestApplications = applications } = useQuery({
+
+  // Single source of truth: the query data
+  // Using placeholderData instead of initialData ensures refetches on invalidation
+  const { data: applications = initialApplications, isFetching, isLoading } = useQuery({
     queryKey: queryKeys.applications.byJob(jobId),
     queryFn: async () => {
       const response = await api.get<JobDetailApplicationsResponse>(`/api/jobs/${jobId}`)
@@ -87,34 +96,23 @@ export function CandidatesPipeline({ jobId, applications, userCanMutate }: Candi
         },
       }))
     },
-    initialData: applications,
+    placeholderData: initialApplications,
+    staleTime: 0, // Always refetch on mount/invalidation
   })
 
-  React.useEffect(() => {
-    setLocalApplications(latestApplications)
-  }, [latestApplications])
+  // Show subtle loading indicator when refetching (not initial load)
+  const isRefetching = isFetching && !isLoading
 
   const handleStageChange = async (applicationId: string, newStage: string) => {
     setUpdatingId(applicationId)
     setError(null)
 
     try {
-      const updated = await updateApplicationMutation.mutateAsync({
+      await updateApplicationMutation.mutateAsync({
         id: applicationId,
         stage: newStage,
       })
-
-      setLocalApplications((current) =>
-        current.map((app) =>
-          app.id === applicationId
-            ? {
-                ...app,
-                stage: updated.stage,
-                stageUpdatedAt: updated.stageUpdatedAt,
-              }
-            : app,
-        ),
-      )
+      // No local state update needed - query invalidation handles it
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -134,11 +132,9 @@ export function CandidatesPipeline({ jobId, applications, userCanMutate }: Candi
       await deleteApplicationMutation.mutateAsync({
         id: applicationId,
         candidateId,
+        jobId, // Pass jobId for proper cache invalidation
       })
-
-      setLocalApplications((current) =>
-        current.filter((app) => app.id !== applicationId),
-      )
+      // No local state update needed - query invalidation handles it
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -153,7 +149,12 @@ export function CandidatesPipeline({ jobId, applications, userCanMutate }: Candi
   const orderedStages = getOrderedStages()
 
   return (
-    <div>
+    <div className="relative">
+      {isRefetching && (
+        <div className="absolute right-0 top-0 p-2">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      )}
       {error && (
         <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
           {error}
@@ -171,7 +172,7 @@ export function CandidatesPipeline({ jobId, applications, userCanMutate }: Candi
           </TableRow>
         </TableHeader>
         <TableBody>
-          {localApplications.map((app) => {
+          {applications.map((app) => {
             const stageConfig = APPLICATION_STAGE[app.stage]
             const color = stageConfig?.color as StatusColor | undefined
             const colorClasses = color ? getStatusColorClasses(color) : null
@@ -179,7 +180,7 @@ export function CandidatesPipeline({ jobId, applications, userCanMutate }: Candi
             const isUnlinking = unlinkingId === app.id
 
             return (
-              <TableRow key={app.id}>
+              <TableRow key={app.id} data-testid="candidate-row">
                 <TableCell>
                   <Link
                     href={`/candidates/${app.candidate.id}`}
@@ -252,72 +253,69 @@ function StageDropdown({
   isUpdating,
   onStageChange,
 }: StageDropdownProps) {
-  const [open, setOpen] = React.useState(false)
   const currentConfig = APPLICATION_STAGE[currentStage]
 
-  return (
-    <div className="relative">
-      <button
-        onClick={() => !isUpdating && setOpen(!open)}
-        disabled={isUpdating}
+  if (isUpdating) {
+    return (
+      <span
         className={cn(
-          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors",
+          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium",
           colorClasses
             ? `${colorClasses.bg} ${colorClasses.text}`
-            : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-          !isUpdating && "hover:opacity-80 cursor-pointer"
+            : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
         )}
       >
-        {isUpdating ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <>
-            {currentConfig?.label || currentStage}
-            <ChevronDown className="h-3 w-3" />
-          </>
+        <Loader2 className="h-3 w-3 animate-spin" />
+      </span>
+    )
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        data-testid="stage-dropdown-trigger"
+        className={cn(
+          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors hover:opacity-80 cursor-pointer",
+          colorClasses
+            ? `${colorClasses.bg} ${colorClasses.text}`
+            : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
         )}
-      </button>
+      >
+        {currentConfig?.label || currentStage}
+        <ChevronDown className="h-3 w-3" />
+      </DropdownMenuTrigger>
 
-      {open && !isUpdating && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
-          <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-md border bg-popover p-1 shadow-lg">
-            {stages.map(({ key, config }) => {
-              const stageColor = config.color as StatusColor | undefined
-              const stageColorClasses = stageColor ? getStatusColorClasses(stageColor) : null
-              const isSelected = key === currentStage
+      <DropdownMenuContent align="start" className="w-40" data-testid="stage-dropdown-content">
+        {stages.map(({ key, config }) => {
+          const stageColor = config.color as StatusColor | undefined
+          const stageColorClasses = stageColor ? getStatusColorClasses(stageColor) : null
+          const isSelected = key === currentStage
 
-              return (
-                <button
-                  key={key}
-                  onClick={() => {
-                    if (key !== currentStage) {
-                      onStageChange(key)
-                    }
-                    setOpen(false)
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors",
-                    isSelected ? "bg-muted" : "hover:bg-muted/50"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      stageColorClasses?.bg || "bg-zinc-300"
-                    )}
-                  />
-                  {config.label}
-                </button>
-              )
-            })}
-          </div>
-        </>
-      )}
-    </div>
+          return (
+            <DropdownMenuItem
+              key={key}
+              onClick={() => {
+                if (key !== currentStage) {
+                  onStageChange(key)
+                }
+              }}
+              className={cn(
+                "flex items-center gap-2",
+                isSelected && "bg-muted"
+              )}
+            >
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  stageColorClasses?.bg || "bg-zinc-300"
+                )}
+              />
+              {config.label}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

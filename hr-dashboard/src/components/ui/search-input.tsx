@@ -25,14 +25,39 @@ export function SearchInput({
 }: SearchInputProps) {
   const [internalValue, setInternalValue] = useState(controlledValue ?? '')
   const isFirstRender = useRef(true)
-  const suppressNextDebouncedEmit = useRef(false)
+  const lastEmittedValue = useRef(controlledValue ?? '')
+  const hasPendingDebounce = useRef(false)
+  const previousControlledValue = useRef(controlledValue)
 
   useEffect(() => {
-    if (controlledValue !== undefined && controlledValue !== internalValue) {
-      suppressNextDebouncedEmit.current = true
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- required to synchronize local debounced input state with external controlled updates
+    if (controlledValue === undefined) {
+      return
+    }
+
+    if (controlledValue === previousControlledValue.current) {
+      return
+    }
+
+    if (controlledValue === internalValue) {
+      lastEmittedValue.current = controlledValue
+      hasPendingDebounce.current = false
+      previousControlledValue.current = controlledValue
+      return
+    }
+
+    const isStaleControlledCatchUp =
+      hasPendingDebounce.current &&
+      controlledValue.length < internalValue.length &&
+      internalValue.startsWith(controlledValue)
+
+    if (!isStaleControlledCatchUp) {
+      lastEmittedValue.current = controlledValue
+      hasPendingDebounce.current = false
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- required for controlled component sync
       setInternalValue(controlledValue)
     }
+
+    previousControlledValue.current = controlledValue
   }, [controlledValue, internalValue])
 
   useEffect(() => {
@@ -43,12 +68,15 @@ export function SearchInput({
       return
     }
 
-    if (suppressNextDebouncedEmit.current) {
-      suppressNextDebouncedEmit.current = false
+    if (internalValue === lastEmittedValue.current) {
+      hasPendingDebounce.current = false
       return
     }
 
+    hasPendingDebounce.current = true
     const timer = setTimeout(() => {
+      lastEmittedValue.current = internalValue
+      hasPendingDebounce.current = false
       onChange(internalValue)
     }, debounceMs)
 
@@ -57,8 +85,8 @@ export function SearchInput({
 
   const handleClear = useCallback(() => {
     setInternalValue('')
-    // Trigger clear immediately and suppress the next debounced emission.
-    suppressNextDebouncedEmit.current = true
+    hasPendingDebounce.current = false
+    lastEmittedValue.current = ''
     onChange?.('')
   }, [onChange])
 
