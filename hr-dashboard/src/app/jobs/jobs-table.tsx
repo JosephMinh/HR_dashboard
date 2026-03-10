@@ -16,8 +16,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { JobStatusBadge, PipelineHealthBadge, JobPriorityBadge } from '@/components/ui/status-badge'
 import { TableSkeleton } from '@/components/ui/loading-skeleton'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorState } from '@/components/ui/error-state'
+import { EmptyStateSurface, ErrorStateSurface } from '@/components/ui/state-surface'
 import {
   Select,
   SelectContent,
@@ -25,8 +24,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { JOB_STATUS } from '@/lib/status-config'
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react'
+import { JOB_STATUS, PIPELINE_HEALTH } from '@/lib/status-config'
+import { cn } from '@/lib/utils'
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useJobsQuery } from '@/hooks/queries'
 
 const ITEMS_PER_PAGE = 20
@@ -50,7 +50,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
 
   // Use TanStack Query for data fetching
-  const { data, isLoading, error, refetch } = useJobsQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useJobsQuery({
     status: status || undefined,
     pipelineHealth: pipelineHealth || undefined,
     critical: critical || undefined,
@@ -61,6 +61,9 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
     limit: ITEMS_PER_PAGE,
     includeCount: true,
   })
+
+  // Show subtle loading state during background refetches
+  const isRefetching = isFetching && isPlaceholderData
 
   const jobs = data?.jobs ?? []
   const total = data?.total ?? 0
@@ -96,10 +99,10 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   }
 
   const getSortIcon = (field: string) => {
-    if (sort !== field) return <ArrowUpDown className="ml-1 h-3 w-3" />
+    if (sort !== field) return <ArrowUpDown className="ml-1 h-3 w-3" aria-hidden="true" />
     return order === 'asc'
-      ? <ArrowUp className="ml-1 h-3 w-3" />
-      : <ArrowDown className="ml-1 h-3 w-3" />
+      ? <ArrowUp className="ml-1 h-3 w-3" aria-hidden="true" />
+      : <ArrowDown className="ml-1 h-3 w-3" aria-hidden="true" />
   }
 
   const getAriaSort = (field: string): 'ascending' | 'descending' | 'none' => {
@@ -117,53 +120,87 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   const startIndex = (page - 1) * ITEMS_PER_PAGE
 
   if (error) {
-    return <ErrorState message={error.message} onRetry={() => void refetch()} />
+    return <ErrorStateSurface error={error} onRetry={() => void refetch()} />
   }
 
   return (
     <div className="space-y-4">
-      <FilterBar showClearAll={!!hasFilters} onClearAll={clearFilters} className="justify-between">
+      <FilterBar showClearAll={!!hasFilters} onClearAll={clearFilters} className="flex-wrap gap-3">
         <SearchInput
           value={search}
           onChange={(value) => updateParams({ search: value })}
           placeholder="Search jobs..."
           fullWidth={false}
-          className="w-64"
+          className="w-72"
         />
-        <Select
-          value={status}
-          onValueChange={(value) => updateParams({ status: value })}
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All Status</SelectItem>
-            {Object.entries(JOB_STATUS).map(([key, config]) => (
-              <SelectItem key={key} value={key}>
-                {config.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={status}
+            onValueChange={(value) => updateParams({ status: value })}
+          >
+            <SelectTrigger className="w-32" aria-label="Filter by status">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Status</SelectItem>
+              {Object.entries(JOB_STATUS).map(([key, config]) => (
+                <SelectItem key={key} value={key}>
+                  {config.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={pipelineHealth}
+            onValueChange={(value) => updateParams({ pipelineHealth: value })}
+          >
+            <SelectTrigger className="w-36" aria-label="Filter by pipeline health">
+              <SelectValue placeholder="Pipeline" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Pipelines</SelectItem>
+              {Object.entries(PIPELINE_HEALTH).map(([key, config]) => (
+                <SelectItem key={key} value={key}>
+                  {config.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={critical}
+            onValueChange={(value) => updateParams({ critical: value })}
+          >
+            <SelectTrigger className="w-32" aria-label="Filter by risk level">
+              <SelectValue placeholder="Risk" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Jobs</SelectItem>
+              <SelectItem value="true">Critical Only</SelectItem>
+              <SelectItem value="false">Non-Critical</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </FilterBar>
 
       {isLoading ? (
         <TableSkeleton rows={8} columns={7} />
       ) : jobs.length === 0 ? (
-        <EmptyState
-          icon={Briefcase}
-          title="No jobs found"
-          description={hasFilters ? 'Try adjusting your filters' : 'Create your first job to get started'}
-          action={!hasFilters && userCanMutate ? {
-            label: 'Create Job',
-            onClick: () => router.push('/jobs/new'),
-          } : undefined}
+        <EmptyStateSurface
+          resource="jobs"
+          hasFilters={!!hasFilters}
+          hasSearch={!!search}
+          searchQuery={search}
+          onClearFilters={clearFilters}
+          onCreate={userCanMutate ? () => router.push('/jobs/new') : undefined}
+          createLabel="Create Job"
         />
       ) : (
         <>
-          <div className="rounded-md border">
-            <Table>
+          <div className={cn(
+            "overflow-auto rounded-lg border shadow-premium-sm transition-opacity duration-150",
+            isRefetching && "opacity-60"
+          )}>
+            <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[300px]" aria-sort={getAriaSort('title')}>
@@ -172,6 +209,11 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                       size="sm"
                       onClick={() => toggleSort('title')}
                       className="-ml-3"
+                      aria-label={
+                        sort === 'title'
+                          ? `Sorted by title, ${order}. Activate to change sort order.`
+                          : 'Sort by title'
+                      }
                     >
                       Title
                       {getSortIcon('title')}
@@ -183,6 +225,11 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                       size="sm"
                       onClick={() => toggleSort('department')}
                       className="-ml-3"
+                      aria-label={
+                        sort === 'department'
+                          ? `Sorted by department, ${order}. Activate to change sort order.`
+                          : 'Sort by department'
+                      }
                     >
                       Department
                       {getSortIcon('department')}
@@ -194,6 +241,11 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                       size="sm"
                       onClick={() => toggleSort('status')}
                       className="-ml-3"
+                      aria-label={
+                        sort === 'status'
+                          ? `Sorted by status, ${order}. Activate to change sort order.`
+                          : 'Sort by status'
+                      }
                     >
                       Status
                       {getSortIcon('status')}
@@ -208,6 +260,11 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                       size="sm"
                       onClick={() => toggleSort('targetFillDate')}
                       className="-ml-3"
+                      aria-label={
+                        sort === 'targetFillDate'
+                          ? `Sorted by target date, ${order}. Activate to change sort order.`
+                          : 'Sort by target date'
+                      }
                     >
                       Target Date
                       {getSortIcon('targetFillDate')}
@@ -224,7 +281,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                         className="font-medium hover:underline flex items-center gap-2"
                       >
                         {job.isCritical && (
-                          <AlertTriangle className="h-4 w-4 text-red-500" />
+                          <AlertTriangle className="h-4 w-4 text-red-500" aria-hidden="true" />
                         )}
                         {job.title}
                       </Link>
@@ -260,7 +317,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
           </div>
 
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground" aria-live="polite">
               Showing {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, total)} of {total} jobs
             </p>
             {totalPages > 1 ? (
@@ -270,8 +327,9 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                   size="sm"
                   onClick={() => updateParams({ page: String(page - 1) })}
                   disabled={page <= 1}
+                  aria-label="Previous page"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   Previous
                 </Button>
                 <span className="min-w-20 text-center text-xs text-muted-foreground">
@@ -282,9 +340,10 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                   size="sm"
                   onClick={() => updateParams({ page: String(page + 1) })}
                   disabled={page >= totalPages}
+                  aria-label="Next page"
                 >
                   Next
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             ) : null}

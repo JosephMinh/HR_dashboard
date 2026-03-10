@@ -13,12 +13,19 @@ export function UnauthorizedState({
   className,
 }: UnauthorizedStateProps) {
   return (
-    <div className={cn('flex flex-col items-center justify-center py-12 px-4 text-center', className)}>
-      <div className="rounded-full bg-muted p-4 mb-4">
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center px-4 py-12 text-center',
+        className
+      )}
+    >
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border/60">
         <Lock className="h-8 w-8 text-muted-foreground" />
       </div>
-      <h3 className="text-lg font-medium mb-1">Access Denied</h3>
-      <p className="text-sm text-muted-foreground max-w-sm mb-4">{message}</p>
+      <h3 className="text-lg font-semibold tracking-tight text-foreground mb-1">
+        Access Denied
+      </h3>
+      <p className="max-w-sm text-sm text-muted-foreground mb-4">{message}</p>
       <Link href="/">
         <Button variant="outline">Back to home</Button>
       </Link>

@@ -13,6 +13,7 @@ import {
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Table,
   TableBody,
@@ -37,9 +38,11 @@ interface DataTableProps<TData, TValue> {
   onRowSelectionChange?: OnChangeFn<RowSelectionState>
   // Display options
   isLoading?: boolean
+  isFetching?: boolean
   emptyMessage?: string
   // Total count for pagination info
   totalCount?: number
+  entityLabel?: string
 }
 
 export function DataTable<TData, TValue>({
@@ -53,9 +56,12 @@ export function DataTable<TData, TValue>({
   rowSelection,
   onRowSelectionChange,
   isLoading = false,
+  isFetching = false,
   emptyMessage = 'No results.',
   totalCount,
+  entityLabel = 'results',
 }: DataTableProps<TData, TValue>) {
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table hook returns non-memoizable functions; React Compiler warning is expected here.
   const table = useReactTable({
     data,
     columns,
@@ -83,14 +89,21 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border">
-        <Table>
+      <div className={cn(
+        "overflow-auto rounded-lg border shadow-premium-sm transition-opacity duration-150",
+        isFetching && !isLoading && "opacity-60"
+      )}>
+        <Table className="min-w-[900px]">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort()
                   const sorted = header.column.getIsSorted()
+                  const headerLabel =
+                    typeof header.column.columnDef.header === 'string'
+                      ? header.column.columnDef.header
+                      : header.column.id
 
                   return (
                     <TableHead
@@ -110,17 +123,24 @@ export function DataTable<TData, TValue>({
                           size="sm"
                           className="-ml-3"
                           onClick={() => header.column.toggleSorting()}
+                          aria-label={
+                            sorted === 'asc'
+                              ? `Sorted by ${headerLabel}, ascending. Activate to sort descending.`
+                              : sorted === 'desc'
+                                ? `Sorted by ${headerLabel}, descending. Activate to clear sorting.`
+                                : `Sort by ${headerLabel}`
+                          }
                         >
                           {flexRender(
                             header.column.columnDef.header,
                             header.getContext()
                           )}
                           {sorted === 'asc' ? (
-                            <ArrowUp className="ml-1 h-3 w-3" />
+                            <ArrowUp className="ml-1 h-3 w-3" aria-hidden="true" />
                           ) : sorted === 'desc' ? (
-                            <ArrowDown className="ml-1 h-3 w-3" />
+                            <ArrowDown className="ml-1 h-3 w-3" aria-hidden="true" />
                           ) : (
-                            <ArrowUpDown className="ml-1 h-3 w-3" />
+                            <ArrowUpDown className="ml-1 h-3 w-3" aria-hidden="true" />
                           )}
                         </Button>
                       ) : (
@@ -142,7 +162,7 @@ export function DataTable<TData, TValue>({
                 <TableRow key={`skeleton-${index}`}>
                   {columns.map((_, colIndex) => (
                     <TableCell key={`skeleton-cell-${colIndex}`}>
-                      <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                      <div className="h-4 w-full rounded bg-muted motion-safe:animate-pulse motion-reduce:animate-none" />
                     </TableCell>
                   ))}
                 </TableRow>
@@ -183,8 +203,8 @@ export function DataTable<TData, TValue>({
       {/* Pagination */}
       {pagination && pageCount && pageCount > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {startRow}-{endRow} of {totalCount ?? 'many'} results
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            Showing {startRow}-{endRow} of {totalCount ?? 'many'} {entityLabel}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -192,21 +212,24 @@ export function DataTable<TData, TValue>({
               size="sm"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
+              aria-label="Previous page"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
               Previous
             </Button>
             <span className="min-w-20 text-center text-xs text-muted-foreground">
-              Page {pageIndex + 1} of {pageCount}
+              <span className="hidden sm:inline">Page </span>
+              {pageIndex + 1} of {pageCount}
             </span>
             <Button
               variant="outline"
               size="sm"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
+              aria-label="Next page"
             >
               Next
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         </div>

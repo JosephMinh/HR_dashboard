@@ -7,7 +7,12 @@ interface CardSkeletonProps {
 
 export function CardSkeleton({ className }: CardSkeletonProps) {
   return (
-    <div className={cn('rounded-lg border bg-card p-6 space-y-3', className)}>
+    <div
+      className={cn(
+        'rounded-xl bg-card p-6 ring-1 ring-border/60 shadow-premium-sm space-y-3',
+        className
+      )}
+    >
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-4 w-1/2" />
       <Skeleton className="h-8 w-1/3 mt-4" />
@@ -22,9 +27,9 @@ interface TableRowSkeletonProps {
 
 export function TableRowSkeleton({ columns = 4, className }: TableRowSkeletonProps) {
   return (
-    <tr className={cn('border-b', className)}>
+    <tr className={cn('border-b border-border/60', className)}>
       {Array.from({ length: columns }).map((_, i) => (
-        <td key={i} className="p-4">
+        <td key={i} className="px-3 py-3">
           <Skeleton className="h-4 w-full" />
         </td>
       ))}
@@ -40,12 +45,17 @@ interface TableSkeletonProps {
 
 export function TableSkeleton({ rows = 5, columns = 4, className }: TableSkeletonProps) {
   return (
-    <div className={cn('rounded-lg border', className)}>
+    <div
+      className={cn(
+        'rounded-xl bg-card ring-1 ring-border/60 shadow-premium-sm overflow-hidden',
+        className
+      )}
+    >
       <table className="w-full">
         <thead>
-          <tr className="border-b bg-muted/50">
+          <tr className="border-b border-border/60 bg-muted/40">
             {Array.from({ length: columns }).map((_, i) => (
-              <th key={i} className="p-4 text-left">
+              <th key={i} className="px-3 py-3 text-left">
                 <Skeleton className="h-4 w-24" />
               </th>
             ))}

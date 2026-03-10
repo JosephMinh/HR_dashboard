@@ -47,6 +47,8 @@ export function SearchInput({
 
     const isStaleControlledCatchUp =
       hasPendingDebounce.current &&
+      controlledValue.length > 0 &&
+      controlledValue === lastEmittedValue.current &&
       controlledValue.length < internalValue.length &&
       internalValue.startsWith(controlledValue)
 
@@ -95,10 +97,10 @@ export function SearchInput({
   }, [])
 
   return (
-    <div className={cn('relative', fullWidth ? 'w-full' : 'w-64', className)}>
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <div className={cn('relative', fullWidth ? 'w-full' : 'w-64', className)} role="search">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
       <Input
-        type="text"
+        type="search"
         value={internalValue}
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={(e) => {
@@ -108,17 +110,19 @@ export function SearchInput({
           }
         }}
         placeholder={placeholder}
+        aria-label={placeholder.replace('...', '')}
         className="pl-9 pr-8 shadow-xs"
       />
       {internalValue && (
         <Button
           variant="ghost"
           size="icon-xs"
+          type="button"
           onClick={handleClear}
           className="absolute right-1 top-1/2 -translate-y-1/2"
           aria-label="Clear search"
         >
-          <X className="h-3 w-3" />
+          <X className="h-3 w-3" aria-hidden="true" />
         </Button>
       )}
     </div>

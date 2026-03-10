@@ -31,8 +31,11 @@ export function PipelineSummary({
         <CardTitle className="text-base">Pipeline Health</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <p className="sr-only">
+          Pipeline health summary: {ahead} ahead, {onTrack} on track, {behind} behind.
+        </p>
         {showBar && total > 0 && (
-          <div className="flex h-3 overflow-hidden rounded-full">
+          <div className="flex h-3 overflow-hidden rounded-full" aria-hidden="true">
             {items.map((item) => {
               const percentage = (item.count / total) * 100
               if (percentage === 0) return null
@@ -57,15 +60,19 @@ export function PipelineSummary({
                 key={item.key}
                 href={`/jobs?pipelineHealth=${item.key}`}
                 className={cn(
-                  'flex flex-col items-center rounded-lg p-3 transition-colors hover:bg-muted/50',
+                  'group flex flex-col items-center rounded-lg p-3 transition-all hover:shadow-sm',
                   colorClasses.border,
-                  'border'
+                  'border hover:border-current/30'
                 )}
+                aria-label={`${item.label}: ${item.count} jobs`}
               >
-                <span className={cn('text-2xl font-bold', colorClasses.text)}>
+                <span className={cn('text-2xl font-bold tabular-nums', colorClasses.text)}>
                   {item.count}
                 </span>
-                <span className="text-xs text-muted-foreground">{item.label}</span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  {item.label}
+                  <span className="opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true">→</span>
+                </span>
               </Link>
             )
           })}

@@ -26,7 +26,7 @@ export default async function NewJobPage() {
       <div className="space-y-6">
         <PageHeader
           title="Create New Job"
-          description="Add a new job posting to the system"
+          description="Define role basics, ownership, and pipeline signals for the new opening."
         />
         <JobForm mode="create" />
       </div>

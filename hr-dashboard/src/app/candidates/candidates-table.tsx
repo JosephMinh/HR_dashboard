@@ -3,11 +3,10 @@
 import { useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, FileCheck2, FileX2, UserRoundSearch } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, FileCheck2, FileX2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorState } from '@/components/ui/error-state'
+import { EmptyStateSurface, ErrorStateSurface } from '@/components/ui/state-surface'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { TableSkeleton } from '@/components/ui/loading-skeleton'
 import { SearchInput } from '@/components/ui/search-input'
@@ -20,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCandidatesQuery } from '@/hooks/queries'
+import { cn } from '@/lib/utils'
 
 type SortField = 'name' | 'email' | 'updatedAt'
 type SortOrder = 'asc' | 'desc'
@@ -41,7 +41,7 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
 
   // Use TanStack Query for data fetching
-  const { data, isLoading, error, refetch } = useCandidatesQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useCandidatesQuery({
     search: search || undefined,
     sort,
     order,
@@ -49,6 +49,9 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
     limit: ITEMS_PER_PAGE,
     includeJobCount: true,
   })
+
+  // Show subtle loading state during background refetches
+  const isRefetching = isFetching && isPlaceholderData
 
   const candidates = data?.candidates ?? []
   const total = data?.total ?? 0
@@ -90,10 +93,10 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
   }
 
   const getSortIcon = (field: SortField) => {
-    if (sort !== field) return <ArrowUpDown className="ml-1 h-3 w-3" />
+    if (sort !== field) return <ArrowUpDown className="ml-1 h-3 w-3" aria-hidden="true" />
     return order === 'asc'
-      ? <ArrowUp className="ml-1 h-3 w-3" />
-      : <ArrowDown className="ml-1 h-3 w-3" />
+      ? <ArrowUp className="ml-1 h-3 w-3" aria-hidden="true" />
+      : <ArrowDown className="ml-1 h-3 w-3" aria-hidden="true" />
   }
 
   const getAriaSort = (field: SortField): 'ascending' | 'descending' | 'none' => {
@@ -111,12 +114,12 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
   const startIndex = (page - 1) * ITEMS_PER_PAGE
 
   if (error) {
-    return <ErrorState message={error.message} onRetry={() => void refetch()} />
+    return <ErrorStateSurface error={error} onRetry={() => void refetch()} />
   }
 
   return (
     <div className="space-y-4">
-      <FilterBar showClearAll={hasFilters} onClearAll={clearFilters} className="justify-between">
+      <FilterBar showClearAll={hasFilters} onClearAll={clearFilters} className="flex-wrap gap-3">
         <SearchInput
           value={search}
           onChange={(value) => updateParams({ search: value })}
@@ -129,23 +132,22 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
       {isLoading ? (
         <TableSkeleton rows={8} columns={7} />
       ) : candidates.length === 0 ? (
-        <EmptyState
-          icon={UserRoundSearch}
-          title="No candidates found"
-          description={
-            hasFilters
-              ? 'Try a different search term.'
-              : 'Candidates will appear here once added.'
-          }
-          action={!hasFilters && userCanMutate ? {
-            label: 'Create Candidate',
-            onClick: () => router.push('/candidates/new'),
-          } : undefined}
+        <EmptyStateSurface
+          resource="candidates"
+          hasFilters={hasFilters}
+          hasSearch={hasFilters}
+          searchQuery={search}
+          onClearFilters={clearFilters}
+          onCreate={userCanMutate ? () => router.push('/candidates/new') : undefined}
+          createLabel="Create Candidate"
         />
       ) : (
         <>
-          <div className="rounded-md border">
-            <Table>
+          <div className={cn(
+            "overflow-auto rounded-lg border shadow-premium-sm transition-opacity duration-150",
+            isRefetching && "opacity-60"
+          )}>
+            <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[240px]" aria-sort={getAriaSort('name')}>
@@ -154,6 +156,11 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
                       size="sm"
                       className="-ml-3"
                       onClick={() => toggleSort('name')}
+                      aria-label={
+                        sort === 'name'
+                          ? `Sorted by name, ${order}. Activate to change sort order.`
+                          : 'Sort by name'
+                      }
                     >
                       Name
                       {getSortIcon('name')}
@@ -165,6 +172,11 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
                       size="sm"
                       className="-ml-3"
                       onClick={() => toggleSort('email')}
+                      aria-label={
+                        sort === 'email'
+                          ? `Sorted by email, ${order}. Activate to change sort order.`
+                          : 'Sort by email'
+                      }
                     >
                       Email
                       {getSortIcon('email')}
@@ -180,6 +192,11 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
                       size="sm"
                       className="-ml-3"
                       onClick={() => toggleSort('updatedAt')}
+                      aria-label={
+                        sort === 'updatedAt'
+                          ? `Sorted by updated date, ${order}. Activate to change sort order.`
+                          : 'Sort by updated date'
+                      }
                     >
                       Updated
                       {getSortIcon('updatedAt')}
@@ -209,15 +226,15 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
                     </TableCell>
                     <TableCell className="text-center">
                       {candidate.resumeKey || candidate.resumeName ? (
-                        <FileCheck2
-                          className="mx-auto h-4 w-4 text-emerald-600"
-                          aria-label="Resume uploaded"
-                        />
+                        <>
+                          <span className="sr-only">Resume uploaded</span>
+                          <FileCheck2 className="mx-auto h-4 w-4 text-emerald-600" aria-hidden="true" />
+                        </>
                       ) : (
-                        <FileX2
-                          className="mx-auto h-4 w-4 text-muted-foreground"
-                          aria-label="No resume"
-                        />
+                        <>
+                          <span className="sr-only">No resume</span>
+                          <FileX2 className="mx-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        </>
                       )}
                     </TableCell>
                     <TableCell className="text-center">
@@ -233,7 +250,7 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
           </div>
 
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground" aria-live="polite">
               Showing {startIndex + 1}-
               {Math.min(startIndex + ITEMS_PER_PAGE, total)} of{' '}
               {total} candidates
@@ -245,8 +262,9 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
                   size="sm"
                   onClick={() => updateParams({ page: String(page - 1) })}
                   disabled={page <= 1}
+                  aria-label="Previous page"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   Previous
                 </Button>
                 <span className="min-w-20 text-center text-xs text-muted-foreground">
@@ -257,9 +275,10 @@ export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps)
                   size="sm"
                   onClick={() => updateParams({ page: String(page + 1) })}
                   disabled={page >= totalPages}
+                  aria-label="Next page"
                 >
                   Next
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             ) : null}

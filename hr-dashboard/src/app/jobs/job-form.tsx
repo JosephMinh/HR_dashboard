@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useForm } from '@tanstack/react-form'
 import * as z from 'zod'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -13,13 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { createZodFormOptions } from '@/hooks/forms'
+import { createZodFormOptions, useFormDirtyGuard, useFormFeedback, getSubmitLabel } from '@/hooks/forms'
 import { JOB_STATUS, JOB_PRIORITY, PIPELINE_HEALTH } from '@/lib/status-config'
 import {
   useCreateJobMutation,
   useUpdateJobMutation,
   type CreateJobInput,
 } from '@/hooks/queries'
+import { CheckCircle2, Circle } from 'lucide-react'
 
 // Field validation schemas
 const titleSchema = z.string().min(3, 'Title must be at least 3 characters').max(200)
@@ -93,8 +95,14 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
   const createMutation = useCreateJobMutation()
   const updateMutation = useUpdateJobMutation()
 
+  // Form feedback for success/error states
+  const feedback = useFormFeedback({
+    entityType: 'job',
+    action: mode === 'create' ? 'create' : 'update',
+  })
+
   const form = useForm({
-    ...createZodFormOptions(jobFormSchema),
+    ...createZodFormOptions(jobFormSchema, { timing: 'standard' }),
     defaultValues: {
       title: initialData?.title ?? '',
       department: initialData?.department ?? '',
@@ -109,6 +117,8 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
       targetFillDate: initialData?.targetFillDate ?? '',
     } satisfies JobFormValues,
     onSubmit: async ({ value }) => {
+      feedback.setSubmitting()
+
       const payload: CreateJobInput = {
         title: value.title,
         department: value.department,
@@ -123,24 +133,57 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
         targetFillDate: value.targetFillDate || undefined,
       }
 
-      const result =
-        mode === 'create'
-          ? await createMutation.mutateAsync(payload)
-          : await updateMutation.mutateAsync({ id: jobId!, ...payload })
+      try {
+        let result
+        if (mode === 'create') {
+          result = await createMutation.mutateAsync(payload)
+        } else {
+          if (!jobId) {
+            throw new Error('Job ID is required for edit mode')
+          }
+          result = await updateMutation.mutateAsync({ id: jobId, ...payload })
+        }
 
-      router.push(`/jobs/${result.id}`)
+        feedback.setSuccess(value.title)
+        router.push(`/jobs/${result.id}`)
+      } catch (error) {
+        feedback.setError(error instanceof Error ? error : undefined)
+      }
     },
   })
 
-  const isSubmitting = createMutation.isPending || updateMutation.isPending
-  const mutationError = createMutation.error || updateMutation.error
+  // Dirty state protection - warn before leaving with unsaved changes
   const cancelPath = mode === 'edit' && jobId ? `/jobs/${jobId}` : '/jobs'
-  let submitLabel = 'Save Changes'
-  if (isSubmitting) {
-    submitLabel = 'Saving...'
-  } else if (mode === 'create') {
-    submitLabel = 'Create Job'
-  }
+  const { navigateWithGuard } = useFormDirtyGuard({
+    enabled: form.state.isDirty && !feedback.isSubmitting,
+    message: 'You have unsaved changes to this job. Are you sure you want to leave?',
+  })
+
+  const isSubmitting = feedback.isSubmitting
+  const mutationError = createMutation.error || updateMutation.error
+  const submitLabel = getSubmitLabel(feedback.status, mode === 'create' ? 'create' : 'update', 'Job')
+
+  const values = form.state.values
+  const completionItems = [
+    {
+      label: 'Job title',
+      complete: values.title.trim().length >= 3,
+    },
+    {
+      label: 'Department',
+      complete: values.department.trim().length > 0,
+    },
+    {
+      label: 'Description',
+      complete: values.description.trim().length >= 10,
+    },
+    {
+      label: 'Pipeline health',
+      complete: values.status !== 'OPEN' || values.pipelineHealth.trim().length > 0,
+      optional: values.status !== 'OPEN',
+    },
+  ]
+  const completedCount = completionItems.filter((item) => item.complete).length
 
   return (
     <form
@@ -149,7 +192,7 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
         e.stopPropagation()
         void form.handleSubmit()
       }}
-      className="max-w-3xl space-y-6"
+      className="max-w-3xl space-y-8"
     >
       {mutationError && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -157,7 +200,43 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="rounded-xl border border-border/70 bg-card/70 p-4 shadow-premium-xs">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Completion</p>
+            <p className="text-xs text-muted-foreground">
+              Required fields to publish a clean opening.
+            </p>
+          </div>
+          <Badge variant="secondary" className="text-xs">
+            {completedCount}/{completionItems.length} required
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {completionItems.map((item) => (
+            <div key={item.label} className="flex items-center gap-2 text-xs">
+              {item.complete ? (
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+              ) : (
+                <Circle className="h-4 w-4 text-muted-foreground" />
+              )}
+              <span className={item.complete ? 'text-foreground' : 'text-muted-foreground'}>
+                {item.label}
+                {item.optional ? ' (optional)' : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-5 shadow-premium-xs">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Role basics</h2>
+          <p className="text-xs text-muted-foreground">
+            Define the role and the responsibilities candidates will see first.
+          </p>
+        </div>
+
         <form.Field
           name="title"
           validators={{
@@ -165,21 +244,32 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
             onSubmit: ({ value }) => validateField(titleSchema, value),
           }}
         >
-          {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor="title">Job Title *</Label>
-              <Input
-                id="title"
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                onBlur={field.handleBlur}
-                placeholder="e.g. Senior Software Engineer"
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
-              )}
-            </div>
-          )}
+          {(field) => {
+            const hasError = field.state.meta.errors.length > 0
+            return (
+              <div className="space-y-2">
+                <Label htmlFor="title">Job Title *</Label>
+                <Input
+                  id="title"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="e.g. Senior Software Engineer"
+                  aria-required="true"
+                  aria-invalid={hasError}
+                  aria-describedby={hasError ? 'title-error' : 'title-hint'}
+                />
+                <p id="title-hint" className="text-xs text-muted-foreground">
+                  Use the candidate-facing role title.
+                </p>
+                {hasError && (
+                  <p id="title-error" role="alert" className="text-xs text-destructive">
+                    {String(field.state.meta.errors[0])}
+                  </p>
+                )}
+              </div>
+            )
+          }}
         </form.Field>
 
         <form.Field
@@ -189,29 +279,41 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
             onSubmit: ({ value }) => validateField(departmentSchema, value),
           }}
         >
-          {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor="department">Department *</Label>
-              <Select
-                value={field.state.value}
-                onValueChange={(value) => field.handleChange(value ?? '')}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEPARTMENTS.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {field.state.meta.errors.length > 0 && (
-                <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
-              )}
-            </div>
-          )}
+          {(field) => {
+            const hasError = field.state.meta.errors.length > 0
+            return (
+              <div className="space-y-2">
+                <Label htmlFor="department">Department *</Label>
+                <Select
+                  value={field.state.value}
+                  onValueChange={(value) => field.handleChange(value ?? '')}
+                  required
+                >
+                  <SelectTrigger
+                    id="department"
+                    className="w-full"
+                    aria-required="true"
+                    aria-invalid={hasError}
+                    aria-describedby={hasError ? 'department-error' : undefined}
+                  >
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map((dept) => (
+                      <SelectItem key={dept} value={dept}>
+                        {dept}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {hasError && (
+                  <p id="department-error" role="alert" className="text-xs text-destructive">
+                    {String(field.state.meta.errors[0])}
+                  </p>
+                )}
+              </div>
+            )
+          }}
         </form.Field>
 
         <form.Field
@@ -221,24 +323,44 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
             onSubmit: ({ value }) => validateField(descriptionSchema, value),
           }}
         >
-          {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor="description">Description *</Label>
-              <textarea
-                id="description"
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                onBlur={field.handleBlur}
-                placeholder="Job description and requirements..."
-                rows={5}
-                className="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
-              )}
-            </div>
-          )}
+          {(field) => {
+            const hasError = field.state.meta.errors.length > 0
+            return (
+              <div className="space-y-2">
+                <Label htmlFor="description">Description *</Label>
+                <textarea
+                  id="description"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="Job description and requirements..."
+                  rows={5}
+                  aria-required="true"
+                  aria-invalid={hasError}
+                  aria-describedby={hasError ? 'description-error' : 'description-hint'}
+                  className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <p id="description-hint" className="text-xs text-muted-foreground">
+                  Highlight scope, key responsibilities, and success criteria.
+                </p>
+                {hasError && (
+                  <p id="description-error" role="alert" className="text-xs text-destructive">
+                    {String(field.state.meta.errors[0])}
+                  </p>
+                )}
+              </div>
+            )
+          }}
         </form.Field>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-5 shadow-premium-xs">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Planning & ownership</h2>
+          <p className="text-xs text-muted-foreground">
+            Clarify who owns the search and the target timeline.
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <form.Field name="location">
@@ -267,6 +389,9 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
                   onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={field.handleBlur}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Optional, used for urgency and planning cues.
+                </p>
               </div>
             )}
           </form.Field>
@@ -302,6 +427,15 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
               </div>
             )}
           </form.Field>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-5 shadow-premium-xs">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Pipeline & priority</h2>
+          <p className="text-xs text-muted-foreground">
+            Set urgency signals and define how the role appears in reporting.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -363,30 +497,42 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
               },
             }}
           >
-            {(field) => (
-              <div className="space-y-2">
-                <Label>Pipeline Health</Label>
-                <Select
-                  value={field.state.value}
-                  onValueChange={(value) => field.handleChange(value ?? '')}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Not set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Not set</SelectItem>
-                    {Object.entries(PIPELINE_HEALTH).map(([key, config]) => (
-                      <SelectItem key={key} value={key}>
-                        {config.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
-                )}
-              </div>
-            )}
+            {(field) => {
+              const hasError = field.state.meta.errors.length > 0
+              return (
+                <div className="space-y-2">
+                  <Label htmlFor="pipelineHealth">Pipeline Health</Label>
+                  <Select
+                    value={field.state.value}
+                    onValueChange={(value) => field.handleChange(value ?? '')}
+                  >
+                    <SelectTrigger
+                      id="pipelineHealth"
+                      aria-invalid={hasError}
+                      aria-describedby={hasError ? 'pipelineHealth-error' : 'pipelineHealth-hint'}
+                    >
+                      <SelectValue placeholder="Not set" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Not set</SelectItem>
+                      {Object.entries(PIPELINE_HEALTH).map(([key, config]) => (
+                        <SelectItem key={key} value={key}>
+                          {config.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p id="pipelineHealth-hint" className="text-xs text-muted-foreground">
+                    Required when the status is Open.
+                  </p>
+                  {hasError && (
+                    <p id="pipelineHealth-error" role="alert" className="text-xs text-destructive">
+                      {String(field.state.meta.errors[0])}
+                    </p>
+                  )}
+                </div>
+              )
+            }}
           </form.Field>
         </div>
 
@@ -398,7 +544,7 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
                 id="isCritical"
                 checked={field.state.value}
                 onChange={(e) => field.handleChange(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
               />
               <Label htmlFor="isCritical" className="text-sm font-normal">
                 Mark as critical hire
@@ -406,7 +552,7 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
             </div>
           )}
         </form.Field>
-      </div>
+      </section>
 
       <div className="flex gap-3">
         <Button type="submit" disabled={isSubmitting}>
@@ -415,7 +561,7 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.push(cancelPath)}
+          onClick={() => navigateWithGuard(cancelPath)}
           disabled={isSubmitting}
         >
           Cancel

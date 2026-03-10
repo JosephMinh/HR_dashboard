@@ -4,7 +4,7 @@
  * TanStack Query hooks for jobs data fetching.
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api, buildUrl, createRetryPolicy } from '@/lib/api-client'
 import { queryCachePolicy, queryKeys, type JobsFilters } from '@/lib/query-keys'
 
@@ -82,15 +82,21 @@ export function useJobsQuery(filters?: JobsFilters) {
     staleTime: queryCachePolicy.jobs.list.staleTime,
     gcTime: queryCachePolicy.jobs.list.gcTime,
     retry: createRetryPolicy(queryCachePolicy.jobs.list.maxRetries),
+    // Keep previous data visible during refetches for smooth transitions
+    placeholderData: keepPreviousData,
   })
 }
+
+// Sentinel value for disabled queries - prevents cache pollution with empty keys
+const SKIP_QUERY_ID = '__skip__' as const
 
 /**
  * Fetch single job by ID
  */
 export function useJobQuery(id: string | undefined) {
   return useQuery<Job, Error>({
-    queryKey: queryKeys.jobs.detail(id ?? ''),
+    // Use sentinel value when no ID to avoid cache pollution
+    queryKey: queryKeys.jobs.detail(id ?? SKIP_QUERY_ID),
     queryFn: async () => {
       if (!id) throw new Error('Job ID is required')
       return api.get<Job>(`/api/jobs/${id}`)
@@ -116,6 +122,9 @@ export function useCreateJobMutation() {
       // Invalidate all job lists to refetch
       void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() })
     },
+    onError: (error) => {
+      console.error('[useCreateJobMutation] Failed to create job:', error)
+    },
   })
 }
 
@@ -134,6 +143,9 @@ export function useUpdateJobMutation() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.detail(data.id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() })
     },
+    onError: (error, variables) => {
+      console.error(`[useUpdateJobMutation] Failed to update job ${variables.id}:`, error)
+    },
   })
 }
 
@@ -151,6 +163,9 @@ export function useDeleteJobMutation() {
       // Remove from cache and invalidate lists
       queryClient.removeQueries({ queryKey: queryKeys.jobs.detail(id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() })
+    },
+    onError: (error, id) => {
+      console.error(`[useDeleteJobMutation] Failed to delete job ${id}:`, error)
     },
   })
 }

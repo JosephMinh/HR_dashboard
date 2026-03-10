@@ -120,7 +120,10 @@ async function request<T>(url: string, options: RequestOptions = {}): Promise<T>
   }
 
   if (!isJson) {
-    return undefined as T
+    // Non-JSON success response - only safe when T explicitly allows undefined/void
+    // Callers expecting a value will get undefined, which may cause runtime errors
+    // For DELETE endpoints returning 204 No Content, use api.delete<void>()
+    return undefined as unknown as T
   }
 
   return response.json() as Promise<T>

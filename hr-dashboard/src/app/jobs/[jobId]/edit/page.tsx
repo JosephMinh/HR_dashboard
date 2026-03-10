@@ -41,7 +41,7 @@ export default async function EditJobPage({ params }: PageParams) {
       <div className="space-y-6">
         <PageHeader
           title="Edit Job"
-          description={job.title}
+          description={`Update ${job.title} details, ownership, and pipeline signals.`}
         />
         <JobForm
           mode="edit"

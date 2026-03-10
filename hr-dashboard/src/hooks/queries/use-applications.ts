@@ -82,6 +82,12 @@ export function useCreateApplicationMutation() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.lists() })
       void queryClient.invalidateQueries({ queryKey: queryKeys.candidates.lists() })
     },
+    onError: (error, variables) => {
+      console.error(
+        `[useCreateApplicationMutation] Failed to create application for job ${variables.jobId}, candidate ${variables.candidateId}:`,
+        error
+      )
+    },
   })
 }
 
@@ -111,6 +117,9 @@ export function useUpdateApplicationMutation() {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.candidates.detail(data.candidateId),
       })
+    },
+    onError: (error, variables) => {
+      console.error(`[useUpdateApplicationMutation] Failed to update application ${variables.id}:`, error)
     },
   })
 }
@@ -150,6 +159,9 @@ export function useDeleteApplicationMutation() {
           queryKey: queryKeys.candidates.detail(variables.candidateId),
         })
       }
+    },
+    onError: (error, variables) => {
+      console.error(`[useDeleteApplicationMutation] Failed to delete application ${variables.id}:`, error)
     },
   })
 }

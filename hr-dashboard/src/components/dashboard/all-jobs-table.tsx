@@ -149,7 +149,7 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
   const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'
 
   // Use TanStack Query for data fetching
-  const { data, isLoading, error, refetch } = useJobsQuery({
+  const { data, isLoading, isFetching, error, refetch } = useJobsQuery({
     search: search.trim() || undefined,
     status: selectedStatuses.length > 0 ? selectedStatuses.join(',') : undefined,
     department: selectedDepartments.length > 0 ? selectedDepartments : undefined,
@@ -223,8 +223,17 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
 
   return (
     <div className="space-y-4">
+      {/* Header with premium styling and clear view-all path */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">All Jobs</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">All Jobs</h2>
+          <Link
+            href="/jobs"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            View full list →
+          </Link>
+        </div>
         {userCanMutate ? (
           <Link href="/jobs/new" className={buttonVariants({ size: 'sm' })}>
             <Plus className="h-4 w-4 mr-2" />
@@ -233,7 +242,12 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
         ) : null}
       </div>
 
-      <FilterBar showClearAll={hasFilters} onClearAll={clearFilters}>
+      {/* Filter bar matching list workspace contract patterns */}
+      <FilterBar
+        showClearAll={hasFilters}
+        onClearAll={clearFilters}
+        className="flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
+      >
         <SearchInput
           value={search}
           onChange={(value) => {
@@ -242,11 +256,11 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
           }}
           placeholder="Search jobs..."
           fullWidth={false}
-          className="w-60"
+          className="w-72"
         />
 
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs">
+          <DropdownMenuTrigger className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs hover:bg-muted/50 transition-colors">
             Status
             {selectedStatuses.length ? ` (${selectedStatuses.length})` : ''}
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -269,7 +283,7 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
         </DropdownMenu>
 
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs">
+          <DropdownMenuTrigger className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs hover:bg-muted/50 transition-colors">
             Department
             {selectedDepartments.length ? ` (${selectedDepartments.length})` : ''}
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -298,6 +312,7 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
         </DropdownMenu>
       </FilterBar>
 
+      {/* Table with premium container styling and responsive scroll */}
       {jobs.length === 0 && !isLoading ? (
         <EmptyState
           icon={Briefcase}
@@ -318,8 +333,10 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
           onPaginationChange={setPagination}
           pageCount={totalPages}
           isLoading={isLoading}
+          isFetching={isFetching}
           emptyMessage="No jobs found"
           totalCount={total}
+          entityLabel="jobs"
         />
       )}
     </div>

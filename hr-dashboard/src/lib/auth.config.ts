@@ -42,5 +42,6 @@ export const authConfig = {
   providers: [], // Providers added in auth.ts
   session: {
     strategy: 'jwt',
+    maxAge: 4 * 60 * 60, // 4 hours - shorter session for security
   },
 } satisfies NextAuthConfig

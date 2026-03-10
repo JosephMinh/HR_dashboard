@@ -6,75 +6,110 @@ import { Card, CardContent } from './card'
 interface KpiCardProps {
   title: string
   value: number | string
+  description?: string
   icon?: LucideIcon
   trend?: {
     direction: 'up' | 'down'
     value: string
   }
   href?: string
-  variant?: 'default' | 'alert'
+  variant?: 'default' | 'alert' | 'success'
   className?: string
 }
 
 export function KpiCard({
   title,
   value,
+  description,
   icon: Icon,
   trend,
   href,
   variant = 'default',
   className,
 }: KpiCardProps) {
+  const isAlert = variant === 'alert'
+  const isSuccess = variant === 'success'
+  let iconBackgroundClass = 'bg-muted'
+  let iconColorClass = 'text-muted-foreground'
+
+  if (isSuccess) {
+    iconBackgroundClass = 'bg-status-ahead/10'
+    iconColorClass = 'text-status-ahead'
+  }
+
+  if (isAlert) {
+    iconBackgroundClass = 'bg-destructive/10'
+    iconColorClass = 'text-destructive'
+  }
+
   const content = (
     <Card
       className={cn(
-        'transition-colors',
-        href && 'hover:bg-muted/50 cursor-pointer',
-        variant === 'alert' && 'border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20',
+        // Base premium styling
+        'shadow-premium-sm transition-all duration-150',
+        // Interactive states when clickable
+        href && [
+          'cursor-pointer',
+          'hover:shadow-premium-md',
+          'focus-visible:ring-2 focus-visible:ring-ring',
+        ],
+        // Variant-specific styling
+        isAlert && 'ring-1 ring-destructive/30 bg-destructive/5 hover:ring-destructive/50',
+        isSuccess && 'ring-1 ring-status-ahead/30 bg-status-ahead/5 hover:ring-status-ahead/50',
+        !isAlert && !isSuccess && href && 'hover:ring-primary/20',
         className
       )}
     >
-      <CardContent className="p-6">
+      <CardContent className="p-5">
         <div className="flex items-start justify-between">
-          <div className="space-y-2">
+          <div>
             <p className={cn(
               'text-sm font-medium',
-              variant === 'alert' ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
+              isAlert ? 'text-destructive' : 'text-muted-foreground'
             )}>
               {title}
             </p>
             <p className={cn(
-              'text-3xl font-bold tracking-tight',
-              variant === 'alert' && 'text-red-700 dark:text-red-300'
+              'mt-2 text-3xl font-bold tracking-tight tabular-nums',
+              isAlert && 'text-destructive',
+              isSuccess && 'text-status-ahead'
             )}>
               {value}
             </p>
-            {trend && (
-              <div className={cn(
-                'flex items-center gap-1 text-xs font-medium',
-                trend.direction === 'up' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-              )}>
-                {trend.direction === 'up' ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : (
-                  <TrendingDown className="h-3 w-3" />
+            {(description || trend) && (
+              <div className="mt-1 flex items-center gap-2">
+                {trend && (
+                  <span className={cn(
+                    'inline-flex items-center gap-1 text-xs font-medium',
+                    trend.direction === 'up' ? 'text-status-ahead' : 'text-destructive'
+                  )}>
+                    {trend.direction === 'up' ? (
+                      <TrendingUp className="h-3 w-3" />
+                    ) : (
+                      <TrendingDown className="h-3 w-3" />
+                    )}
+                    {trend.value}
+                  </span>
                 )}
-                {trend.value}
+                {description && (
+                  <span className={cn(
+                    'text-xs',
+                    isAlert ? 'text-destructive/70' : 'text-muted-foreground'
+                  )}>
+                    {description}
+                  </span>
+                )}
               </div>
             )}
           </div>
           {Icon && (
             <div className={cn(
-              'rounded-lg p-2',
-              variant === 'alert'
-                ? 'bg-red-100 dark:bg-red-900/30'
-                : 'bg-muted'
+              'rounded-lg p-2.5',
+              iconBackgroundClass
             )}>
               <Icon className={cn(
                 'h-5 w-5',
-                variant === 'alert'
-                  ? 'text-red-600 dark:text-red-400'
-                  : 'text-muted-foreground'
+                iconColorClass
               )} />
             </div>
           )}
@@ -84,7 +119,11 @@ export function KpiCard({
   )
 
   if (href) {
-    return <Link href={href}>{content}</Link>
+    return (
+      <Link href={href} className="group block">
+        {content}
+      </Link>
+    )
   }
 
   return content

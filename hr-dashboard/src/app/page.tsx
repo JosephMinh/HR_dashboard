@@ -5,19 +5,10 @@ import { auth } from '@/lib/auth'
 import { getDashboardStats } from '@/lib/dashboard'
 import { canMutate } from '@/lib/permissions'
 import { AppShell } from '@/components/layout'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Card, CardContent } from '@/components/ui/card'
 import { PipelineSummary } from '@/components/ui/pipeline-summary'
-import { PipelineHealthBadge } from '@/components/ui/status-badge'
-import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/loading-skeleton'
+import { AttentionQueue } from '@/components/dashboard/attention-queue'
 import { DashboardJobsTable } from './dashboard-jobs-table'
 import { Briefcase, Users, AlertTriangle, TrendingUp } from 'lucide-react'
 
@@ -46,60 +37,92 @@ export default async function DashboardPage() {
           </p>
         </div>
 
+        {/* KPI Cards - Premium treatment with urgency hierarchy */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Link href="/jobs?status=OPEN" className="block">
-            <Card className="transition-colors hover:bg-muted/50">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Open Jobs</CardTitle>
-                <Briefcase className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.jobsOpen}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active job postings
-                </p>
+          {/* Open Jobs - Primary metric */}
+          <Link href="/jobs?status=OPEN" className="group block">
+            <Card className="shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-hover:ring-1 group-hover:ring-primary/20 group-focus-visible:ring-2 group-focus-visible:ring-ring">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Open Jobs</p>
+                    <p className="mt-2 text-3xl font-bold tracking-tight tabular-nums">{stats.jobsOpen}</p>
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <span>Active positions</span>
+                      <span className="opacity-0 transition-opacity group-hover:opacity-100">→</span>
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-primary/10 p-2.5 transition-transform group-hover:scale-105">
+                    <Briefcase className="h-5 w-5 text-primary" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </Link>
-          <Link href="/candidates" className="block">
-            <Card className="transition-colors hover:bg-muted/50">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Candidates</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.activeCandidates}</div>
-                <p className="text-xs text-muted-foreground">
-                  In open job pipelines
-                </p>
+
+          {/* Active Candidates - Secondary metric */}
+          <Link href="/candidates" className="group block">
+            <Card className="shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-hover:ring-1 group-hover:ring-primary/20 group-focus-visible:ring-2 group-focus-visible:ring-ring">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Active Candidates</p>
+                    <p className="mt-2 text-3xl font-bold tracking-tight tabular-nums">{stats.activeCandidates}</p>
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <span>In open pipelines</span>
+                      <span className="opacity-0 transition-opacity group-hover:opacity-100">→</span>
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-2.5 transition-transform group-hover:scale-105">
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </Link>
-          <Link href="/jobs?critical=true" className="block">
-            <Card className="transition-colors hover:bg-muted/50">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Critical Jobs</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.activeCriticalJobs}</div>
-                <p className="text-xs text-muted-foreground">
-                  Require immediate attention
-                </p>
+
+          {/* Critical Jobs - Alert metric with urgency styling */}
+          <Link href="/jobs?critical=true" className="group block">
+            <Card className={`shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-focus-visible:ring-2 group-focus-visible:ring-ring ${stats.activeCriticalJobs > 0 ? 'ring-1 ring-destructive/30 bg-destructive/5 group-hover:ring-destructive/50' : 'group-hover:ring-1 group-hover:ring-primary/20'}`}>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className={`text-sm font-medium ${stats.activeCriticalJobs > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      Critical Jobs
+                    </p>
+                    <p className={`mt-2 text-3xl font-bold tracking-tight tabular-nums ${stats.activeCriticalJobs > 0 ? 'text-destructive' : ''}`}>
+                      {stats.activeCriticalJobs}
+                    </p>
+                    <p className={`mt-1 flex items-center gap-1 text-xs ${stats.activeCriticalJobs > 0 ? 'text-destructive/70' : 'text-muted-foreground'}`}>
+                      <span>{stats.activeCriticalJobs > 0 ? 'Need attention' : 'All on track'}</span>
+                      <span className="opacity-0 transition-opacity group-hover:opacity-100">→</span>
+                    </p>
+                  </div>
+                  <div className={`rounded-lg p-2.5 transition-transform group-hover:scale-105 ${stats.activeCriticalJobs > 0 ? 'bg-destructive/10' : 'bg-muted'}`}>
+                    <AlertTriangle className={`h-5 w-5 ${stats.activeCriticalJobs > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </Link>
-          <Link href="/jobs?status=CLOSED" className="block">
-            <Card className="transition-colors hover:bg-muted/50">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Closed Jobs</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.jobsClosed}</div>
-                <p className="text-xs text-muted-foreground">
-                  Successfully filled
-                </p>
+
+          {/* Closed Jobs - Success metric */}
+          <Link href="/jobs?status=CLOSED" className="group block">
+            <Card className="shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-hover:ring-1 group-hover:ring-primary/20 group-focus-visible:ring-2 group-focus-visible:ring-ring">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Closed Jobs</p>
+                    <p className="mt-2 text-3xl font-bold tracking-tight tabular-nums">{stats.jobsClosed}</p>
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <span>Successfully filled</span>
+                      <span className="opacity-0 transition-opacity group-hover:opacity-100">→</span>
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-status-ahead/10 p-2.5 transition-transform group-hover:scale-105">
+                    <TrendingUp className="h-5 w-5 text-status-ahead" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </Link>
@@ -111,60 +134,10 @@ export default async function DashboardPage() {
             onTrack={stats.pipelineHealth.onTrack}
             behind={stats.pipelineHealth.behind}
             showBar
+            className="shadow-premium-sm"
           />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Critical Jobs</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats.criticalJobs.length === 0 ? (
-                <EmptyState
-                  icon={AlertTriangle}
-                  title="No critical jobs"
-                  description="All jobs are on track"
-                  className="py-6"
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Job</TableHead>
-                      <TableHead>Pipeline</TableHead>
-                      <TableHead className="text-right">Candidates</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stats.criticalJobs.slice(0, 5).map((job) => (
-                      <TableRow key={job.id}>
-                        <TableCell>
-                          <Link
-                            href={`/jobs/${job.id}`}
-                            className="font-medium hover:underline"
-                          >
-                            {job.title}
-                          </Link>
-                          <div className="text-xs text-muted-foreground">
-                            {job.department}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {job.pipelineHealth ? (
-                            <PipelineHealthBadge value={job.pipelineHealth} size="sm" />
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {job.activeCandidateCount}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <AttentionQueue criticalJobs={stats.criticalJobs} />
         </div>
 
         <Suspense fallback={<TableSkeleton rows={5} columns={8} />}>

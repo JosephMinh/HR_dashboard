@@ -4,7 +4,7 @@
  * TanStack Query hooks for candidates data fetching.
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api, buildUrl, createRetryPolicy } from '@/lib/api-client'
 import { queryCachePolicy, queryKeys, type CandidatesFilters } from '@/lib/query-keys'
 
@@ -74,15 +74,21 @@ export function useCandidatesQuery(filters?: CandidatesFilters & { includeJobCou
     staleTime: queryCachePolicy.candidates.list.staleTime,
     gcTime: queryCachePolicy.candidates.list.gcTime,
     retry: createRetryPolicy(queryCachePolicy.candidates.list.maxRetries),
+    // Keep previous data visible during refetches for smooth transitions
+    placeholderData: keepPreviousData,
   })
 }
+
+// Sentinel value for disabled queries - prevents cache pollution with empty keys
+const SKIP_QUERY_ID = '__skip__' as const
 
 /**
  * Fetch single candidate by ID
  */
 export function useCandidateQuery(id: string | undefined) {
   return useQuery<Candidate, Error>({
-    queryKey: queryKeys.candidates.detail(id ?? ''),
+    // Use sentinel value when no ID to avoid cache pollution
+    queryKey: queryKeys.candidates.detail(id ?? SKIP_QUERY_ID),
     queryFn: async () => {
       if (!id) throw new Error('Candidate ID is required')
       return api.get<Candidate>(`/api/candidates/${id}`)
@@ -115,6 +121,9 @@ export function useCreateCandidateMutation() {
         void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.detail(data.linkedJobId) })
       }
     },
+    onError: (error) => {
+      console.error('[useCreateCandidateMutation] Failed to create candidate:', error)
+    },
   })
 }
 
@@ -132,6 +141,9 @@ export function useUpdateCandidateMutation() {
       // Invalidate the specific candidate and all lists
       void queryClient.invalidateQueries({ queryKey: queryKeys.candidates.detail(data.id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.candidates.lists() })
+    },
+    onError: (error, variables) => {
+      console.error(`[useUpdateCandidateMutation] Failed to update candidate ${variables.id}:`, error)
     },
   })
 }
@@ -152,6 +164,9 @@ export function useDeleteCandidateMutation() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.candidates.lists() })
       // Also invalidate applications since a candidate's applications are deleted
       void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+    },
+    onError: (error, id) => {
+      console.error(`[useDeleteCandidateMutation] Failed to delete candidate ${id}:`, error)
     },
   })
 }
