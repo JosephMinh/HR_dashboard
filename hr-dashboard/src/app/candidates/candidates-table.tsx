@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowUpDown, FileCheck2, FileX2, UserRoundSearch } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, FileCheck2, FileX2, UserRoundSearch } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -19,43 +19,40 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-
-interface Candidate {
-  id: string
-  firstName: string
-  lastName: string
-  email: string | null
-  currentCompany: string | null
-  location: string | null
-  resumeKey: string | null
-  resumeName: string | null
-  updatedAt: string
-  jobCount?: number
-}
-
-interface CandidatesResponse {
-  candidates: Candidate[]
-  total: number
-}
+import { useCandidatesQuery } from '@/hooks/queries'
 
 type SortField = 'name' | 'email' | 'updatedAt'
 type SortOrder = 'asc' | 'desc'
 
 const ITEMS_PER_PAGE = 20
 
-export function CandidatesTable() {
+interface CandidatesTableProps {
+  userCanMutate?: boolean
+}
+
+export function CandidatesTable({ userCanMutate = false }: CandidatesTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-
-  const [candidates, setCandidates] = useState<Candidate[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
   const search = searchParams.get('search') || ''
   const sort = (searchParams.get('sort') || 'name') as SortField
   const order = (searchParams.get('order') || 'asc') as SortOrder
-  const page = parseInt(searchParams.get('page') || '1', 10)
+  const parsedPage = Number.parseInt(searchParams.get('page') || '1', 10)
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
+
+  // Use TanStack Query for data fetching
+  const { data, isLoading, error, refetch } = useCandidatesQuery({
+    search: search || undefined,
+    sort,
+    order,
+    page,
+    limit: ITEMS_PER_PAGE,
+    includeJobCount: true,
+  })
+
+  const candidates = data?.candidates ?? []
+  const total = data?.total ?? 0
+  const totalPages = data?.totalPages ?? 1
 
   const updateParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -73,44 +70,15 @@ export function CandidatesTable() {
         params.delete('page')
       }
 
-      router.push(`/candidates?${params.toString()}`)
+      const nextUrl = `/candidates?${params.toString()}`
+      if ('page' in updates) {
+        router.push(nextUrl)
+        return
+      }
+      router.replace(nextUrl)
     },
     [router, searchParams],
   )
-
-  const fetchCandidates = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    const params = new URLSearchParams()
-    if (search) params.set('search', search)
-    params.set('sort', sort)
-    params.set('order', order)
-    params.set('includeJobCount', 'true')
-
-    try {
-      const response = await fetch(`/api/candidates?${params.toString()}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch candidates')
-      }
-
-      const data: CandidatesResponse = await response.json()
-      setCandidates(data.candidates)
-      setTotal(data.total)
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : 'An unexpected error occurred',
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [search, sort, order])
-
-  useEffect(() => {
-    void fetchCandidates()
-  }, [fetchCandidates])
 
   const toggleSort = (field: SortField) => {
     if (sort === field) {
@@ -121,25 +89,34 @@ export function CandidatesTable() {
     updateParams({ sort: field, order: field === 'updatedAt' ? 'desc' : 'asc' })
   }
 
+  const getSortIcon = (field: SortField) => {
+    if (sort !== field) return <ArrowUpDown className="ml-1 h-3 w-3" />
+    return order === 'asc'
+      ? <ArrowUp className="ml-1 h-3 w-3" />
+      : <ArrowDown className="ml-1 h-3 w-3" />
+  }
+
+  const getAriaSort = (field: SortField): 'ascending' | 'descending' | 'none' => {
+    if (sort !== field) return 'none'
+    return order === 'asc' ? 'ascending' : 'descending'
+  }
+
   const clearFilters = () => {
     router.push('/candidates')
   }
 
   const hasFilters = search.length > 0
+
+  // Calculate display range for pagination info
   const startIndex = (page - 1) * ITEMS_PER_PAGE
-  const paginatedCandidates = candidates.slice(
-    startIndex,
-    startIndex + ITEMS_PER_PAGE,
-  )
-  const totalPages = Math.ceil(candidates.length / ITEMS_PER_PAGE)
 
   if (error) {
-    return <ErrorState message={error} onRetry={fetchCandidates} />
+    return <ErrorState message={error.message} onRetry={() => void refetch()} />
   }
 
   return (
     <div className="space-y-4">
-      <FilterBar showClearAll={hasFilters} onClearAll={clearFilters}>
+      <FilterBar showClearAll={hasFilters} onClearAll={clearFilters} className="justify-between">
         <SearchInput
           value={search}
           onChange={(value) => updateParams({ search: value })}
@@ -149,7 +126,7 @@ export function CandidatesTable() {
         />
       </FilterBar>
 
-      {loading ? (
+      {isLoading ? (
         <TableSkeleton rows={8} columns={7} />
       ) : candidates.length === 0 ? (
         <EmptyState
@@ -160,6 +137,10 @@ export function CandidatesTable() {
               ? 'Try a different search term.'
               : 'Candidates will appear here once added.'
           }
+          action={!hasFilters && userCanMutate ? {
+            label: 'Create Candidate',
+            onClick: () => router.push('/candidates/new'),
+          } : undefined}
         />
       ) : (
         <>
@@ -167,7 +148,7 @@ export function CandidatesTable() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[240px]">
+                  <TableHead className="w-[240px]" aria-sort={getAriaSort('name')}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -175,10 +156,10 @@ export function CandidatesTable() {
                       onClick={() => toggleSort('name')}
                     >
                       Name
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      {getSortIcon('name')}
                     </Button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={getAriaSort('email')}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -186,14 +167,14 @@ export function CandidatesTable() {
                       onClick={() => toggleSort('email')}
                     >
                       Email
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      {getSortIcon('email')}
                     </Button>
                   </TableHead>
                   <TableHead>Current Company</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead className="text-center">Resume</TableHead>
                   <TableHead className="text-center">Jobs</TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={getAriaSort('updatedAt')}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -201,13 +182,13 @@ export function CandidatesTable() {
                       onClick={() => toggleSort('updatedAt')}
                     >
                       Updated
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      {getSortIcon('updatedAt')}
                     </Button>
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedCandidates.map((candidate) => (
+                {candidates.map((candidate) => (
                   <TableRow key={candidate.id}>
                     <TableCell>
                       <Link
@@ -251,17 +232,38 @@ export function CandidatesTable() {
             </Table>
           </div>
 
-          {totalPages > 1 ? (
+          <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               Showing {startIndex + 1}-
-              {Math.min(startIndex + ITEMS_PER_PAGE, candidates.length)} of{' '}
+              {Math.min(startIndex + ITEMS_PER_PAGE, total)} of{' '}
               {total} candidates
             </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Showing {total} candidate{total === 1 ? '' : 's'}
-            </p>
-          )}
+            {totalPages > 1 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updateParams({ page: String(page - 1) })}
+                  disabled={page <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <span className="min-w-20 text-center text-xs text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updateParams({ page: String(page + 1) })}
+                  disabled={page >= totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </>
       )}
     </div>

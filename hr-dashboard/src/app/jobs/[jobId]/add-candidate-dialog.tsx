@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { Search, UserPlus, Loader2, AlertCircle, Check } from "lucide-react"
 import {
   Dialog,
@@ -15,6 +16,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { ApiError } from "@/lib/api-client"
+import { queryKeys } from "@/lib/query-keys"
+import { useCreateApplicationMutation } from "@/hooks/queries"
 
 interface Candidate {
   id: string
@@ -36,57 +40,64 @@ export function AddCandidateDialog({
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
-  const [candidates, setCandidates] = React.useState<Candidate[]>([])
-  const [isSearching, setIsSearching] = React.useState(false)
+  const [debouncedSearch, setDebouncedSearch] = React.useState("")
   const [isAttaching, setIsAttaching] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
-  const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+  const [attachedCandidateIds, setAttachedCandidateIds] = React.useState(existingCandidateIds)
+  const createApplicationMutation = useCreateApplicationMutation()
 
-  // Debounced search
+  // Debounced search term
   React.useEffect(() => {
     if (!open) return
 
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current)
-    }
-
-    if (search.trim().length < 2) {
-      setCandidates([])
-      return
-    }
-
-    setIsSearching(true)
-    searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const response = await fetch(`/api/candidates?search=${encodeURIComponent(search.trim())}`)
-        if (!response.ok) throw new Error("Failed to search candidates")
-        const data = await response.json()
-        setCandidates(data.candidates || [])
-      } catch {
-        setError("Failed to search candidates")
-      } finally {
-        setIsSearching(false)
-      }
+    const handle = setTimeout(() => {
+      setDebouncedSearch(search)
     }, 300)
 
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current)
-      }
-    }
+    return () => clearTimeout(handle)
   }, [search, open])
 
   // Reset state when dialog closes
   React.useEffect(() => {
     if (!open) {
       setSearch("")
-      setCandidates([])
+      setDebouncedSearch("")
       setError(null)
       setSelectedId(null)
       setIsAttaching(false)
     }
   }, [open])
+
+  React.useEffect(() => {
+    setAttachedCandidateIds(existingCandidateIds)
+  }, [existingCandidateIds])
+
+  const trimmedSearch = debouncedSearch.trim()
+  const rawTrimmedSearch = search.trim()
+  const shouldSearch = open && trimmedSearch.length >= 2
+  const isDebouncing =
+    open && rawTrimmedSearch.length >= 2 && debouncedSearch !== search
+
+  const {
+    data: candidatesResponse,
+    isLoading: isSearching,
+    error: queryError,
+  } = useQuery({
+    queryKey: queryKeys.candidates.list({ search: trimmedSearch }),
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/candidates?search=${encodeURIComponent(trimmedSearch)}`,
+      )
+      if (!response.ok) throw new Error("Failed to search candidates")
+      return response.json() as Promise<{ candidates: Candidate[] }>
+    },
+    enabled: shouldSearch,
+    staleTime: 0,
+  })
+
+  const candidates = shouldSearch ? candidatesResponse?.candidates ?? [] : []
+  const displayError = error ?? (queryError ? "Failed to search candidates" : null)
 
   const handleAttachCandidate = async (candidateId: string) => {
     setIsAttaching(true)
@@ -94,29 +105,26 @@ export function AddCandidateDialog({
     setSelectedId(candidateId)
 
     try {
-      const response = await fetch("/api/applications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId, candidateId }),
-      })
+      await createApplicationMutation.mutateAsync({ jobId, candidateId })
 
-      if (!response.ok) {
-        const data = await response.json()
-        if (response.status === 409) {
-          setError("This candidate is already attached to this job")
-        } else {
-          setError(data.error || "Failed to attach candidate")
-        }
-        setSelectedId(null)
-        setIsAttaching(false)
-        return
-      }
+      setAttachedCandidateIds((current) =>
+        current.includes(candidateId) ? current : [...current, candidateId]
+      )
 
       setOpen(false)
-      router.refresh()
-    } catch {
-      setError("Failed to attach candidate")
       setSelectedId(null)
+    } catch (requestError) {
+      if (ApiError.isApiError(requestError) && requestError.status === 409) {
+        setError("This candidate is already attached to this job")
+      } else {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Failed to attach candidate"
+        )
+      }
+      setSelectedId(null)
+    } finally {
       setIsAttaching(false)
     }
   }
@@ -127,7 +135,7 @@ export function AddCandidateDialog({
   }
 
   const isAlreadyAttached = (candidateId: string) => {
-    return existingCandidateIds.includes(candidateId)
+    return attachedCandidateIds.includes(candidateId)
   }
 
   return (
@@ -151,28 +159,31 @@ export function AddCandidateDialog({
             <Input
               placeholder="Search by name or email..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setError(null)
+              }}
               className="pl-9"
               autoFocus
             />
           </div>
 
           {/* Error Message */}
-          {error && (
+          {displayError && (
             <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+              {displayError}
             </div>
           )}
 
           {/* Results */}
           <div className="max-h-64 overflow-y-auto rounded-lg border">
-            {isSearching ? (
+            {isSearching || isDebouncing ? (
               <div className="flex items-center justify-center p-4 text-sm text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Searching...
               </div>
-            ) : search.trim().length < 2 ? (
+            ) : rawTrimmedSearch.length < 2 ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
                 Type at least 2 characters to search
               </div>

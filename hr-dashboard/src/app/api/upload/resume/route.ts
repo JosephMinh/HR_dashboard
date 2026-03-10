@@ -14,6 +14,15 @@ interface UploadRequestBody {
   contentType?: string
 }
 
+function normalizeContentType(contentType: string): string {
+  return contentType.split(';')[0]?.trim().toLowerCase() || ''
+}
+
+function isGenericBinaryContentType(contentType: string): boolean {
+  const normalized = normalizeContentType(contentType)
+  return normalized === 'application/octet-stream' || normalized === 'binary/octet-stream'
+}
+
 export async function POST(request: NextRequest) {
   const session = await auth()
   if (!session?.user) {
@@ -36,21 +45,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  if (!body.filename) {
+  const filename = body.filename?.trim()
+  if (!filename) {
     return NextResponse.json({ error: 'Filename is required' }, { status: 400 })
   }
 
   // Validate file type
-  if (!isValidResumeType(body.filename)) {
+  if (!isValidResumeType(filename)) {
     return NextResponse.json(
       { error: 'Invalid file type. Accepted: PDF, DOC, DOCX, TXT, RTF' },
       { status: 400 }
     )
   }
 
+  const contentType = getContentType(filename)
+  if (
+    body.contentType &&
+    !isGenericBinaryContentType(body.contentType) &&
+    normalizeContentType(body.contentType) !== normalizeContentType(contentType)
+  ) {
+    return NextResponse.json(
+      { error: 'Content type does not match filename extension' },
+      { status: 400 }
+    )
+  }
+
   // Generate unique key
-  const key = generateObjectKey(body.filename)
-  const contentType = body.contentType || getContentType(body.filename)
+  const key = generateObjectKey(filename)
 
   try {
     const uploadUrl = await generateUploadUrl(key, contentType)

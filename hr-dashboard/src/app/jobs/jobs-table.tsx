@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -26,43 +26,45 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { JOB_STATUS } from '@/lib/status-config'
-import { AlertTriangle, ArrowUpDown, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react'
-
-interface Job {
-  id: string
-  title: string
-  department: string
-  status: string
-  priority: string
-  pipelineHealth: string | null
-  isCritical: boolean
-  activeCandidateCount?: number
-  targetFillDate: string | null
-  updatedAt: string
-}
-
-interface JobsResponse {
-  jobs: Job[]
-  total: number
-}
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Briefcase, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useJobsQuery } from '@/hooks/queries'
 
 const ITEMS_PER_PAGE = 20
 
-export function JobsTable() {
+interface JobsTableProps {
+  userCanMutate?: boolean
+}
+
+export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [jobs, setJobs] = useState<Job[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
   // Filter state from URL params
   const status = searchParams.get('status') || ''
+  const pipelineHealth = searchParams.get('pipelineHealth') || ''
+  const critical = searchParams.get('critical') || ''
   const search = searchParams.get('search') || ''
   const sort = searchParams.get('sort') || 'updatedAt'
-  const order = searchParams.get('order') || 'desc'
-  const page = parseInt(searchParams.get('page') || '1', 10)
+  const order = (searchParams.get('order') || 'desc') as 'asc' | 'desc'
+  const parsedPage = Number.parseInt(searchParams.get('page') || '1', 10)
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
+
+  // Use TanStack Query for data fetching
+  const { data, isLoading, error, refetch } = useJobsQuery({
+    status: status || undefined,
+    pipelineHealth: pipelineHealth || undefined,
+    critical: critical || undefined,
+    search: search || undefined,
+    sort,
+    order,
+    page,
+    limit: ITEMS_PER_PAGE,
+    includeCount: true,
+  })
+
+  const jobs = data?.jobs ?? []
+  const total = data?.total ?? 0
+  const totalPages = data?.totalPages ?? 1
 
   const updateParams = useCallback((updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -77,38 +79,13 @@ export function JobsTable() {
     if (!('page' in updates)) {
       params.delete('page')
     }
-    router.push(`/jobs?${params.toString()}`)
-  }, [router, searchParams])
-
-  const fetchJobs = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    const params = new URLSearchParams()
-    if (status) params.set('status', status)
-    if (search) params.set('search', search)
-    params.set('sort', sort)
-    params.set('order', order)
-    params.set('includeCount', 'true')
-
-    try {
-      const res = await fetch(`/api/jobs?${params.toString()}`)
-      if (!res.ok) {
-        throw new Error('Failed to fetch jobs')
-      }
-      const data: JobsResponse = await res.json()
-      setJobs(data.jobs)
-      setTotal(data.total)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setLoading(false)
+    const nextUrl = `/jobs?${params.toString()}`
+    if ('page' in updates) {
+      router.push(nextUrl)
+      return
     }
-  }, [status, search, sort, order])
-
-  useEffect(() => {
-    fetchJobs()
-  }, [fetchJobs])
+    router.replace(nextUrl)
+  }, [router, searchParams])
 
   const toggleSort = (field: string) => {
     if (sort === field) {
@@ -118,24 +95,34 @@ export function JobsTable() {
     }
   }
 
+  const getSortIcon = (field: string) => {
+    if (sort !== field) return <ArrowUpDown className="ml-1 h-3 w-3" />
+    return order === 'asc'
+      ? <ArrowUp className="ml-1 h-3 w-3" />
+      : <ArrowDown className="ml-1 h-3 w-3" />
+  }
+
+  const getAriaSort = (field: string): 'ascending' | 'descending' | 'none' => {
+    if (sort !== field) return 'none'
+    return order === 'asc' ? 'ascending' : 'descending'
+  }
+
   const clearFilters = () => {
     router.push('/jobs')
   }
 
-  const hasFilters = status || search
+  const hasFilters = status || pipelineHealth || critical || search.trim()
 
-  // Pagination (client-side for now - API supports pagination if needed)
+  // Calculate display range for pagination info
   const startIndex = (page - 1) * ITEMS_PER_PAGE
-  const paginatedJobs = jobs.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  const totalPages = Math.ceil(jobs.length / ITEMS_PER_PAGE)
 
   if (error) {
-    return <ErrorState message={error} onRetry={fetchJobs} />
+    return <ErrorState message={error.message} onRetry={() => void refetch()} />
   }
 
   return (
     <div className="space-y-4">
-      <FilterBar showClearAll={!!hasFilters} onClearAll={clearFilters}>
+      <FilterBar showClearAll={!!hasFilters} onClearAll={clearFilters} className="justify-between">
         <SearchInput
           value={search}
           onChange={(value) => updateParams({ search: value })}
@@ -161,13 +148,17 @@ export function JobsTable() {
         </Select>
       </FilterBar>
 
-      {loading ? (
+      {isLoading ? (
         <TableSkeleton rows={8} columns={7} />
       ) : jobs.length === 0 ? (
         <EmptyState
           icon={Briefcase}
           title="No jobs found"
           description={hasFilters ? 'Try adjusting your filters' : 'Create your first job to get started'}
+          action={!hasFilters && userCanMutate ? {
+            label: 'Create Job',
+            onClick: () => router.push('/jobs/new'),
+          } : undefined}
         />
       ) : (
         <>
@@ -175,7 +166,7 @@ export function JobsTable() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[300px]">
+                  <TableHead className="w-[300px]" aria-sort={getAriaSort('title')}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -183,10 +174,10 @@ export function JobsTable() {
                       className="-ml-3"
                     >
                       Title
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      {getSortIcon('title')}
                     </Button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={getAriaSort('department')}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -194,10 +185,10 @@ export function JobsTable() {
                       className="-ml-3"
                     >
                       Department
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      {getSortIcon('department')}
                     </Button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={getAriaSort('status')}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -205,13 +196,13 @@ export function JobsTable() {
                       className="-ml-3"
                     >
                       Status
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      {getSortIcon('status')}
                     </Button>
                   </TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Pipeline</TableHead>
                   <TableHead className="text-center">Candidates</TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={getAriaSort('targetFillDate')}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -219,13 +210,13 @@ export function JobsTable() {
                       className="-ml-3"
                     >
                       Target Date
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      {getSortIcon('targetFillDate')}
                     </Button>
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedJobs.map((job) => (
+                {jobs.map((job) => (
                   <TableRow key={job.id}>
                     <TableCell>
                       <Link
@@ -268,11 +259,11 @@ export function JobsTable() {
             </Table>
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Showing {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, jobs.length)} of {total} jobs
-              </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, total)} of {total} jobs
+            </p>
+            {totalPages > 1 ? (
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -283,6 +274,9 @@ export function JobsTable() {
                   <ChevronLeft className="h-4 w-4" />
                   Previous
                 </Button>
+                <span className="min-w-20 text-center text-xs text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
                 <Button
                   variant="outline"
                   size="sm"
@@ -293,8 +287,8 @@ export function JobsTable() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-          )}
+            ) : null}
+          </div>
         </>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { generateDownloadUrl } from '@/lib/storage'
+import { prisma } from '@/lib/prisma'
+import { generateDownloadUrl, isValidResumeKey } from '@/lib/storage'
 
 interface RouteParams {
   params: Promise<{ key: string }>
@@ -14,9 +15,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const { key } = await params
 
-  // Validate key format (basic check)
-  if (!key || !key.startsWith('resumes/')) {
+  // Validate key format
+  if (!key || !isValidResumeKey(key)) {
     return NextResponse.json({ error: 'Invalid key' }, { status: 400 })
+  }
+
+  const linkedCandidate = await prisma.candidate.findFirst({
+    where: { resumeKey: key },
+    select: { id: true },
+  })
+  if (!linkedCandidate) {
+    return NextResponse.json({ error: 'Resume not found' }, { status: 404 })
   }
 
   try {

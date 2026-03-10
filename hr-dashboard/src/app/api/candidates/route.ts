@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
 
-import { ApplicationStage, CandidateSource } from "@/generated/prisma/client"
-import type { Prisma } from "@/generated/prisma/client"
+import { ApplicationStage, CandidateSource, Prisma } from "@/generated/prisma/client"
 import { auth } from "@/lib/auth"
 import { getClientIp, logAuditCreate } from "@/lib/audit"
 import { AuthorizationError, requireMutate } from "@/lib/permissions"
 import { prisma } from "@/lib/prisma"
+import { isValidResumeKey } from "@/lib/storage"
 
 type SortField = "name" | "email" | "updatedAt"
 type SortOrder = "asc" | "desc"
+
+function getPrismaErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) {
+    return null
+  }
+  const maybeCode = (error as { code?: unknown }).code
+  return typeof maybeCode === "string" ? maybeCode : null
+}
 
 function buildSearchWhere(search: string): Prisma.CandidateWhereInput {
   const normalizedSearch = search.trim()
@@ -63,6 +71,36 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
 
+  // Parse pagination parameters
+  const pageParam = searchParams.get("page")
+  const pageSizeParam = searchParams.get("pageSize")
+
+  // Validate and parse page (1-indexed, defaults to 1)
+  let page = 1
+  if (pageParam !== null) {
+    const parsed = parseInt(pageParam, 10)
+    if (Number.isNaN(parsed) || parsed < 1) {
+      return NextResponse.json(
+        { error: "Invalid page parameter: must be a positive integer" },
+        { status: 400 }
+      )
+    }
+    page = parsed
+  }
+
+  // Validate and parse pageSize (defaults to 20, max 100)
+  let pageSize = 20
+  if (pageSizeParam !== null) {
+    const parsed = parseInt(pageSizeParam, 10)
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 100) {
+      return NextResponse.json(
+        { error: "Invalid pageSize parameter: must be between 1 and 100" },
+        { status: 400 }
+      )
+    }
+    pageSize = parsed
+  }
+
   const search = searchParams.get("search")?.trim() || ""
   const sortParam = (searchParams.get("sort") || "name") as SortField
   const sortField: SortField = ["name", "email", "updatedAt"].includes(sortParam)
@@ -78,9 +116,18 @@ export async function GET(request: NextRequest) {
 
   const orderBy = getOrderBy(sortField, sortOrder)
 
+  // Count total first (for pagination metadata)
+  const total = await prisma.candidate.count({ where })
+  const totalPages = Math.ceil(total / pageSize)
+
+  // Calculate skip for pagination
+  const skip = (page - 1) * pageSize
+
   const candidates = await prisma.candidate.findMany({
     where,
     orderBy,
+    skip,
+    take: pageSize,
     include: includeJobCount
       ? {
           _count: {
@@ -91,8 +138,6 @@ export async function GET(request: NextRequest) {
         }
       : undefined,
   })
-
-  const total = await prisma.candidate.count({ where })
 
   return NextResponse.json({
     candidates: candidates.map((candidate) => ({
@@ -115,6 +160,9 @@ export async function GET(request: NextRequest) {
         : {}),
     })),
     total,
+    page,
+    pageSize,
+    totalPages,
   })
 }
 
@@ -209,7 +257,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { jobId, resumeKey = null, resumeName = null } = body
+  const { jobId } = body
+  const resumeKey = body.resumeKey?.trim() || null
+  const resumeName = body.resumeName?.trim() || null
+
+  if (resumeKey && !isValidResumeKey(resumeKey)) {
+    return NextResponse.json(
+      { error: "Invalid resume key format" },
+      { status: 400 },
+    )
+  }
+
+  if ((resumeKey && !resumeName) || (!resumeKey && resumeName)) {
+    return NextResponse.json(
+      { error: "resumeKey and resumeName must be provided together" },
+      { status: 400 },
+    )
+  }
+
   const candidateData = {
     firstName: body.firstName.trim(),
     lastName: body.lastName.trim(),
@@ -235,19 +300,35 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const candidate = await prisma.candidate.create({
-    data: candidateData,
-  })
+  let candidate
+  try {
+    candidate = await prisma.$transaction(async (tx) => {
+      const createdCandidate = await tx.candidate.create({
+        data: candidateData,
+      })
 
-  if (jobId) {
-    await prisma.application.create({
-      data: {
-        jobId,
-        candidateId: candidate.id,
-        stage: ApplicationStage.NEW,
-        recruiterOwner: session.user.name ?? null,
-      },
+      if (jobId) {
+        await tx.application.create({
+          data: {
+            jobId,
+            candidateId: createdCandidate.id,
+            stage: ApplicationStage.NEW,
+            recruiterOwner: session.user.name ?? null,
+          },
+        })
+      }
+
+      return createdCandidate
     })
+  } catch (error) {
+    const code = getPrismaErrorCode(error)
+    if (code === "P2003") {
+      return NextResponse.json(
+        { error: "Job not found" },
+        { status: 400 },
+      )
+    }
+    throw error
   }
 
   const ipAddress = getClientIp(request)

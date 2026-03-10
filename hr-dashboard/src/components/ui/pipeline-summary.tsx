@@ -55,7 +55,7 @@ export function PipelineSummary({
             return (
               <Link
                 key={item.key}
-                href={`/jobs?health=${item.key}`}
+                href={`/jobs?pipelineHealth=${item.key}`}
                 className={cn(
                   'flex flex-col items-center rounded-lg p-3 transition-colors hover:bg-muted/50',
                   colorClasses.border,

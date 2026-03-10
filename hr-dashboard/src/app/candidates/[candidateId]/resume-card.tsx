@@ -1,11 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { FileText, Download, ExternalLink, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ResumeUpload } from "@/components/ui/resume-upload"
+import { api } from "@/lib/api-client"
+import { queryKeys } from "@/lib/query-keys"
+import { useUpdateCandidateMutation } from "@/hooks/queries"
 
 interface ResumeCardProps {
   candidateId: string
@@ -20,78 +23,118 @@ export function ResumeCard({
   resumeName,
   userCanMutate,
 }: ResumeCardProps) {
-  const router = useRouter()
-  const [isLoading, setIsLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [isViewing, setIsViewing] = React.useState(false)
+  const [isDownloading, setIsDownloading] = React.useState(false)
+  const [isSaving, setIsSaving] = React.useState(false)
+  const [viewError, setViewError] = React.useState<string | null>(null)
+  const [downloadError, setDownloadError] = React.useState<string | null>(null)
+  const [saveError, setSaveError] = React.useState<string | null>(null)
   const [showUpload, setShowUpload] = React.useState(false)
+  const [localResumeKey, setLocalResumeKey] = React.useState(resumeKey)
+  const [localResumeName, setLocalResumeName] = React.useState(resumeName)
+  const updateCandidateMutation = useUpdateCandidateMutation()
+
+  React.useEffect(() => {
+    setLocalResumeKey(resumeKey)
+    setLocalResumeName(resumeName)
+    setViewError(null)
+    setDownloadError(null)
+  }, [resumeKey, resumeName])
+
+  const resumeUrlQuery = useQuery({
+    queryKey: queryKeys.candidates.resume(localResumeKey ?? ""),
+    queryFn: async () => {
+      if (!localResumeKey) {
+        throw new Error("Resume key is required")
+      }
+      return api.get<{ downloadUrl: string }>(
+        `/api/upload/resume/${encodeURIComponent(localResumeKey)}`
+      )
+    },
+    enabled: false,
+    staleTime: 0,
+  })
+
+  const fetchResumeUrl = async () => {
+    const result = await resumeUrlQuery.refetch()
+    if (result.error || !result.data?.downloadUrl) {
+      throw result.error ?? new Error("Failed to get resume URL")
+    }
+    return result.data.downloadUrl
+  }
 
   const handleView = async () => {
-    if (!resumeKey) return
-    setIsLoading(true)
-    setError(null)
+    if (!localResumeKey) return
+    setIsViewing(true)
+    setViewError(null)
 
     try {
-      const response = await fetch(`/api/upload/resume/${encodeURIComponent(resumeKey)}`)
-      if (!response.ok) {
-        throw new Error("Failed to get resume URL")
-      }
-      const data = await response.json()
-      window.open(data.downloadUrl, "_blank")
-    } catch {
-      setError("Failed to open resume")
+      const downloadUrl = await fetchResumeUrl()
+      window.open(downloadUrl, "_blank")
+    } catch (requestError) {
+      setViewError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to open resume"
+      )
     } finally {
-      setIsLoading(false)
+      setIsViewing(false)
     }
   }
 
   const handleDownload = async () => {
-    if (!resumeKey) return
-    setIsLoading(true)
-    setError(null)
+    if (!localResumeKey) return
+    setIsDownloading(true)
+    setDownloadError(null)
 
     try {
-      const response = await fetch(`/api/upload/resume/${encodeURIComponent(resumeKey)}`)
-      if (!response.ok) {
-        throw new Error("Failed to get resume URL")
-      }
-      const data = await response.json()
-
+      const downloadUrl = await fetchResumeUrl()
       // Create a temporary link to force download
       const link = document.createElement("a")
-      link.href = data.downloadUrl
-      link.download = resumeName || "resume"
+      link.href = downloadUrl
+      link.download = localResumeName || "resume"
       link.target = "_blank"
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-    } catch {
-      setError("Failed to download resume")
+    } catch (requestError) {
+      setDownloadError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to download resume"
+      )
     } finally {
-      setIsLoading(false)
+      setIsDownloading(false)
     }
   }
 
   const handleUploadComplete = async (key: string, name: string) => {
-    // Update the candidate record with the new resume
+    setIsSaving(true)
+    setSaveError(null)
+
     try {
-      const response = await fetch(`/api/candidates/${candidateId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeKey: key, resumeName: name }),
+      const updated = await updateCandidateMutation.mutateAsync({
+        id: candidateId,
+        resumeKey: key,
+        resumeName: name,
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to update candidate")
-      }
-
+      setLocalResumeKey(updated.resumeKey ?? key)
+      setLocalResumeName(updated.resumeName ?? name)
       setShowUpload(false)
-      router.refresh()
-    } catch {
-      setError("Failed to save resume to candidate")
+    } catch (requestError) {
+      setSaveError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to save resume to candidate"
+      )
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const hasResume = resumeKey && resumeName
+  const hasResume = localResumeKey && localResumeName
+  const isActionDisabled = isViewing || isDownloading || isSaving
 
   return (
     <Card>
@@ -99,18 +142,31 @@ export function ResumeCard({
         <CardTitle>Resume</CardTitle>
       </CardHeader>
       <CardContent>
-        {error && (
+        {viewError && (
           <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
+            View failed: {viewError}
+          </div>
+        )}
+        {downloadError && (
+          <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+            Download failed: {downloadError}
+          </div>
+        )}
+        {saveError && (
+          <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+            Save failed: {saveError}
           </div>
         )}
 
         {showUpload ? (
           <div className="space-y-4">
             <ResumeUpload
-              currentResume={hasResume ? { key: resumeKey, name: resumeName } : null}
+              currentResume={
+                hasResume ? { key: localResumeKey, name: localResumeName } : null
+              }
               onUploadComplete={handleUploadComplete}
-              onError={(err) => setError(err)}
+              onError={(err) => setSaveError(err)}
+              disabled={isSaving}
             />
             <Button variant="outline" size="sm" onClick={() => setShowUpload(false)}>
               Cancel
@@ -127,9 +183,9 @@ export function ResumeCard({
                 variant="outline"
                 size="sm"
                 onClick={handleView}
-                disabled={isLoading}
+                disabled={isActionDisabled}
               >
-                {isLoading ? (
+                {isViewing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <ExternalLink className="mr-2 h-4 w-4" />
@@ -140,9 +196,9 @@ export function ResumeCard({
                 variant="outline"
                 size="sm"
                 onClick={handleDownload}
-                disabled={isLoading}
+                disabled={isActionDisabled}
               >
-                {isLoading ? (
+                {isDownloading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Download className="mr-2 h-4 w-4" />
@@ -154,6 +210,7 @@ export function ResumeCard({
                   variant="outline"
                   size="sm"
                   onClick={() => setShowUpload(true)}
+                  disabled={isActionDisabled}
                 >
                   Replace
                 </Button>
@@ -170,6 +227,7 @@ export function ResumeCard({
                 size="sm"
                 className="mt-4"
                 onClick={() => setShowUpload(true)}
+                disabled={isActionDisabled}
               >
                 Upload Resume
               </Button>

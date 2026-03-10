@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/layout'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { JobStatusBadge, PipelineHealthBadge, JobPriorityBadge } from '@/components/ui/status-badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -44,7 +44,7 @@ export default async function JobDetailPage({ params }: PageParams) {
   })
 
   if (!job) {
-    notFound()
+    return notFound()
   }
 
   const activeApplications = job.applications.filter(
@@ -72,10 +72,12 @@ export default async function JobDetailPage({ params }: PageParams) {
           {userCanMutate && (
             <AddCandidateDialog jobId={jobId} existingCandidateIds={existingCandidateIds} />
           )}
-          <Link href={`/jobs/${jobId}/edit`} className={buttonVariants({ variant: 'outline' })}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit
-          </Link>
+          {userCanMutate ? (
+            <Link href={`/jobs/${jobId}/edit`} className={buttonVariants({ variant: 'outline' })}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Link>
+          ) : null}
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
@@ -170,6 +172,7 @@ export default async function JobDetailPage({ params }: PageParams) {
               />
             ) : (
               <CandidatesPipeline
+                jobId={jobId}
                 applications={job.applications.map(app => ({
                   id: app.id,
                   stage: app.stage,

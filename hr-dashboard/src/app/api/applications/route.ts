@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { getClientIp, logAuditCreate } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { AuthorizationError, requireMutate } from '@/lib/permissions'
 import { ApplicationStage } from '@/generated/prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 
 interface CreateApplicationInput {
   jobId: string
@@ -73,31 +75,59 @@ export async function POST(request: NextRequest) {
   }
 
   // Create application
-  const application = await prisma.application.create({
-    data: {
-      jobId: body.jobId,
-      candidateId: body.candidateId,
-      stage: body.stage ?? ApplicationStage.NEW,
-      recruiterOwner: body.recruiterOwner?.trim() || null,
-      interviewNotes: body.interviewNotes?.trim() || null,
-    },
-    include: {
-      job: {
-        select: {
-          id: true,
-          title: true,
-          department: true,
+  const applicationData = {
+    jobId: body.jobId,
+    candidateId: body.candidateId,
+    stage: body.stage ?? ApplicationStage.NEW,
+    recruiterOwner: body.recruiterOwner?.trim() || null,
+    interviewNotes: body.interviewNotes?.trim() || null,
+  }
+
+  let application
+  try {
+    application = await prisma.application.create({
+      data: applicationData,
+      include: {
+        job: {
+          select: {
+            id: true,
+            title: true,
+            department: true,
+          },
+        },
+        candidate: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
         },
       },
-      candidate: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-        },
-      },
-    },
+    })
+  } catch (error) {
+    // Guard against race conditions where the duplicate check passes but a
+    // competing request inserts the same (jobId, candidateId) first.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      return NextResponse.json(
+        { error: 'Candidate is already applied to this job' },
+        { status: 409 },
+      )
+    }
+    throw error
+  }
+
+  // Audit log
+  await logAuditCreate({
+    userId: session.user.id ?? null,
+    action: 'APPLICATION_CREATED',
+    entityType: 'Application',
+    entityId: application.id,
+    created: applicationData,
+    ipAddress: getClientIp(request),
   })
 
   return NextResponse.json({

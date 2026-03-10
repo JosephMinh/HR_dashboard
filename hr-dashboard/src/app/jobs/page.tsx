@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { AppShell } from '@/components/layout'
 import { PageHeader } from '@/components/ui/page-header'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { TableSkeleton } from '@/components/ui/loading-skeleton'
 import { Plus } from 'lucide-react'
+import { canMutate } from '@/lib/permissions'
 import { JobsTable } from './jobs-table'
 
 export default async function JobsPage() {
@@ -15,6 +16,8 @@ export default async function JobsPage() {
   if (!session?.user) {
     redirect('/login')
   }
+
+  const userCanMutate = canMutate(session.user.role)
 
   return (
     <AppShell
@@ -26,14 +29,16 @@ export default async function JobsPage() {
     >
       <div className="space-y-6">
         <PageHeader title="Jobs" description="Manage open positions and track hiring progress">
-          <Link href="/jobs/new" className={buttonVariants()}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Job
-          </Link>
+          {userCanMutate ? (
+            <Link href="/jobs/new" className={buttonVariants()}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Job
+            </Link>
+          ) : null}
         </PageHeader>
 
         <Suspense fallback={<TableSkeleton rows={8} columns={7} />}>
-          <JobsTable />
+          <JobsTable userCanMutate={userCanMutate} />
         </Suspense>
       </div>
     </AppShell>

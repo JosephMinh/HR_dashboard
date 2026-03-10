@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useForm } from '@tanstack/react-form'
+import { z } from 'zod'
+import { Briefcase } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,8 +17,19 @@ import {
 } from '@/components/ui/select'
 import { ResumeUpload } from '@/components/ui/resume-upload'
 import { CANDIDATE_SOURCE } from '@/lib/status-config'
+import {
+  useCreateCandidateMutation,
+  useUpdateCandidateMutation,
+  type CreateCandidateInput,
+} from '@/hooks/queries'
 
-interface CandidateFormData {
+// Field validation schemas
+const firstNameSchema = z.string().min(1, 'First name is required')
+const lastNameSchema = z.string().min(1, 'Last name is required')
+const emailSchema = z.string().email('Invalid email format').or(z.literal(''))
+const linkedinUrlSchema = z.string().url('Invalid LinkedIn URL').or(z.literal(''))
+
+interface CandidateFormValues {
   firstName: string
   lastName: string
   email: string
@@ -25,207 +39,313 @@ interface CandidateFormData {
   location: string
   source: string
   notes: string
-  resumeKey: string | null
-  resumeName: string | null
 }
 
 interface CandidateFormProps {
-  initialData?: Partial<CandidateFormData>
+  initialData?: Partial<CandidateFormValues & { resumeKey: string | null; resumeName: string | null }>
   candidateId?: string
   mode: 'create' | 'edit'
+  linkedJobId?: string
 }
 
-export function CandidateForm({ initialData, candidateId, mode }: CandidateFormProps) {
+export function CandidateForm({ initialData, candidateId, mode, linkedJobId }: CandidateFormProps) {
   const router = useRouter()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const createMutation = useCreateCandidateMutation()
+  const updateMutation = useUpdateCandidateMutation()
+  const [resumeUploadError, setResumeUploadError] = useState<string | null>(null)
 
-  const [formData, setFormData] = useState<CandidateFormData>({
-    firstName: initialData?.firstName || '',
-    lastName: initialData?.lastName || '',
-    email: initialData?.email || '',
-    phone: initialData?.phone || '',
-    linkedinUrl: initialData?.linkedinUrl || '',
-    currentCompany: initialData?.currentCompany || '',
-    location: initialData?.location || '',
-    source: initialData?.source || '',
-    notes: initialData?.notes || '',
-    resumeKey: initialData?.resumeKey ?? null,
-    resumeName: initialData?.resumeName ?? null,
-  })
+  // Resume state managed separately (for async upload callbacks)
+  const [resumeKey, setResumeKey] = useState<string | null>(initialData?.resumeKey ?? null)
+  const [resumeName, setResumeName] = useState<string | null>(initialData?.resumeName ?? null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    setError(null)
-
-    const payload = {
-      ...formData,
-      source: formData.source || null,
-      resumeKey: formData.resumeKey,
-      resumeName: formData.resumeName,
-    }
-
-    try {
-      const url = mode === 'create' ? '/api/candidates' : `/api/candidates/${candidateId}`
-      const method = mode === 'create' ? 'POST' : 'PATCH'
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to save candidate')
+  const form = useForm({
+    defaultValues: {
+      firstName: initialData?.firstName ?? '',
+      lastName: initialData?.lastName ?? '',
+      email: initialData?.email ?? '',
+      phone: initialData?.phone ?? '',
+      linkedinUrl: initialData?.linkedinUrl ?? '',
+      currentCompany: initialData?.currentCompany ?? '',
+      location: initialData?.location ?? '',
+      source: initialData?.source ?? '',
+      notes: initialData?.notes ?? '',
+    } satisfies CandidateFormValues,
+    onSubmit: async ({ value }) => {
+      const payload: CreateCandidateInput = {
+        firstName: value.firstName,
+        lastName: value.lastName,
+        email: value.email || undefined,
+        phone: value.phone || undefined,
+        linkedinUrl: value.linkedinUrl || undefined,
+        currentCompany: value.currentCompany || undefined,
+        location: value.location || undefined,
+        source: value.source || undefined,
+        notes: value.notes || undefined,
+        resumeKey,
+        resumeName,
+        ...(mode === 'create' && linkedJobId ? { jobId: linkedJobId } : {}),
       }
 
-      const data = await res.json()
-      const candidate = data.candidate || data
-      router.push(`/candidates/${candidate.id}`)
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+      if (mode === 'create') {
+        const result = await createMutation.mutateAsync(payload)
+        if (linkedJobId) {
+          router.push(`/jobs/${linkedJobId}`)
+        } else {
+          router.push(`/candidates/${result.candidate.id}`)
+        }
+      } else {
+        const result = await updateMutation.mutateAsync({ id: candidateId!, ...payload })
+        router.push(`/candidates/${result.id}`)
+      }
+    },
+  })
 
-  const updateField = <K extends keyof CandidateFormData>(field: K, value: CandidateFormData[K]) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
+  const isSubmitting = createMutation.isPending || updateMutation.isPending
+  const mutationError = createMutation.error || updateMutation.error
+  const displayError = mutationError?.message || resumeUploadError
+
+  const cancelPath =
+    mode === 'edit' && candidateId
+      ? `/candidates/${candidateId}`
+      : linkedJobId
+        ? `/jobs/${linkedJobId}`
+        : '/candidates'
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
-      {error && (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        void form.handleSubmit()
+      }}
+      className="space-y-6 max-w-2xl"
+    >
+      {mode === 'create' && linkedJobId ? (
+        <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+          <Briefcase className="mt-0.5 h-4 w-4 text-primary" />
+          <p className="text-muted-foreground">
+            This candidate will be automatically added to the selected job after creation.
+          </p>
+        </div>
+      ) : null}
+
+      {displayError && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
+          {displayError}
         </div>
       )}
 
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="firstName">First Name *</Label>
-            <Input
-              id="firstName"
-              value={formData.firstName}
-              onChange={(e) => updateField('firstName', e.target.value)}
-              placeholder="e.g. John"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="lastName">Last Name *</Label>
-            <Input
-              id="lastName"
-              value={formData.lastName}
-              onChange={(e) => updateField('lastName', e.target.value)}
-              placeholder="e.g. Doe"
-              required
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => updateField('email', e.target.value)}
-              placeholder="e.g. john@example.com"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => updateField('phone', e.target.value)}
-              placeholder="e.g. +1 (555) 123-4567"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="linkedinUrl">LinkedIn URL</Label>
-          <Input
-            id="linkedinUrl"
-            type="url"
-            value={formData.linkedinUrl}
-            onChange={(e) => updateField('linkedinUrl', e.target.value)}
-            placeholder="e.g. https://linkedin.com/in/johndoe"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="currentCompany">Current Company</Label>
-            <Input
-              id="currentCompany"
-              value={formData.currentCompany}
-              onChange={(e) => updateField('currentCompany', e.target.value)}
-              placeholder="e.g. Acme Inc"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
-            <Input
-              id="location"
-              value={formData.location}
-              onChange={(e) => updateField('location', e.target.value)}
-              placeholder="e.g. San Francisco, CA"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Source</Label>
-          <Select
-            value={formData.source}
-            onValueChange={(value) => updateField('source', value ?? '')}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <form.Field
+            name="firstName"
+            validators={{
+              onBlur: ({ value }) => {
+                const result = firstNameSchema.safeParse(value)
+                return result.success ? undefined : result.error.issues[0]?.message ?? 'Invalid'
+              },
+            }}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select source" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">Not specified</SelectItem>
-              {Object.entries(CANDIDATE_SOURCE).map(([key, config]) => (
-                <SelectItem key={key} value={key}>
-                  {config.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name *</Label>
+                <Input
+                  id="firstName"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="e.g. John"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="lastName"
+            validators={{
+              onBlur: ({ value }) => {
+                const result = lastNameSchema.safeParse(value)
+                return result.success ? undefined : result.error.issues[0]?.message ?? 'Invalid'
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name *</Label>
+                <Input
+                  id="lastName"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="e.g. Doe"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="notes">Notes</Label>
-          <textarea
-            id="notes"
-            value={formData.notes}
-            onChange={(e) => updateField('notes', e.target.value)}
-            placeholder="Additional notes about the candidate..."
-            rows={4}
-            className="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-          />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <form.Field
+            name="email"
+            validators={{
+              onBlur: ({ value }) => {
+                if (!value) return undefined
+                const result = emailSchema.safeParse(value)
+                return result.success ? undefined : result.error.issues[0]?.message ?? 'Invalid'
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="e.g. john@example.com"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field name="phone">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="e.g. +1 (555) 123-4567"
+                />
+              </div>
+            )}
+          </form.Field>
         </div>
+
+        <form.Field
+          name="linkedinUrl"
+          validators={{
+            onBlur: ({ value }) => {
+              if (!value) return undefined
+              const result = linkedinUrlSchema.safeParse(value)
+              return result.success ? undefined : result.error.issues[0]?.message ?? 'Invalid'
+            },
+          }}
+        >
+          {(field) => (
+            <div className="space-y-2">
+              <Label htmlFor="linkedinUrl">LinkedIn URL</Label>
+              <Input
+                id="linkedinUrl"
+                type="url"
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+                onBlur={field.handleBlur}
+                placeholder="e.g. https://linkedin.com/in/johndoe"
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className="text-xs text-destructive">{String(field.state.meta.errors[0])}</p>
+              )}
+            </div>
+          )}
+        </form.Field>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <form.Field name="currentCompany">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="currentCompany">Current Company</Label>
+                <Input
+                  id="currentCompany"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="e.g. Acme Inc"
+                />
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field name="location">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder="e.g. San Francisco, CA"
+                />
+              </div>
+            )}
+          </form.Field>
+        </div>
+
+        <form.Field name="source">
+          {(field) => (
+            <div className="space-y-2">
+              <Label>Source</Label>
+              <Select
+                value={field.state.value}
+                onValueChange={(value) => field.handleChange(value ?? '')}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Not specified</SelectItem>
+                  {Object.entries(CANDIDATE_SOURCE).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </form.Field>
+
+        <form.Field name="notes">
+          {(field) => (
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <textarea
+                id="notes"
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+                onBlur={field.handleBlur}
+                placeholder="Additional notes about the candidate..."
+                rows={4}
+                className="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+          )}
+        </form.Field>
 
         <div className="space-y-2">
           <Label>Resume</Label>
           <ResumeUpload
-            currentResume={formData.resumeKey && formData.resumeName ? { key: formData.resumeKey, name: formData.resumeName } : null}
+            currentResume={resumeKey && resumeName ? { key: resumeKey, name: resumeName } : null}
             onUploadComplete={(key, name) => {
-              setFormData(prev => ({ ...prev, resumeKey: key, resumeName: name }))
+              setResumeKey(key)
+              setResumeName(name)
             }}
-            onError={(err) => setError(err)}
+            onError={(err) => setResumeUploadError(err)}
             disabled={isSubmitting}
           />
         </div>
@@ -238,7 +358,7 @@ export function CandidateForm({ initialData, candidateId, mode }: CandidateFormP
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.back()}
+          onClick={() => router.push(cancelPath)}
           disabled={isSubmitting}
         >
           Cancel

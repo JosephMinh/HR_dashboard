@@ -35,6 +35,16 @@ export function ResumeUpload({
   const [progress, setProgress] = React.useState(0)
   const [isDragging, setIsDragging] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const successTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const validateFile = (file: File): string | null => {
     // Check file size
@@ -73,13 +83,15 @@ export function ResumeUpload({
     setProgress(10)
 
     try {
+      const detectedContentType = file.type?.trim() || undefined
+
       // Step 1: Get signed upload URL from our API
       const response = await fetch("/api/upload/resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           filename: file.name,
-          contentType: file.type || "application/octet-stream",
+          ...(detectedContentType ? { contentType: detectedContentType } : {}),
         }),
       })
 
@@ -88,14 +100,14 @@ export function ResumeUpload({
         throw new Error(data.error || "Failed to get upload URL")
       }
 
-      const { key, uploadUrl } = await response.json()
+      const { key, uploadUrl, contentType: signedContentType } = await response.json()
       setProgress(30)
 
       // Step 2: Upload file directly to storage using signed URL
       const uploadResponse = await fetch(uploadUrl, {
         method: "PUT",
         headers: {
-          "Content-Type": file.type || "application/octet-stream",
+          "Content-Type": signedContentType,
         },
         body: file,
       })
@@ -110,8 +122,11 @@ export function ResumeUpload({
       // Notify parent component
       onUploadComplete(key, file.name)
 
-      // Reset to idle after showing success
-      setTimeout(() => {
+      // Reset to idle after showing success (with cleanup on unmount)
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current)
+      }
+      successTimeoutRef.current = setTimeout(() => {
         setState("idle")
         setProgress(0)
       }, 2000)

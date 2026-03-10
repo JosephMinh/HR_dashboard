@@ -27,7 +27,7 @@ export default async function EditJobPage({ params }: PageParams) {
   })
 
   if (!job) {
-    notFound()
+    return notFound()
   }
 
   return (

@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { Plus } from 'lucide-react'
 
 import { AppShell } from '@/components/layout'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { TableSkeleton } from '@/components/ui/loading-skeleton'
 import { PageHeader } from '@/components/ui/page-header'
 import { auth } from '@/lib/auth'
@@ -43,7 +43,7 @@ export default async function CandidatesPage() {
         </PageHeader>
 
         <Suspense fallback={<TableSkeleton rows={8} columns={7} />}>
-          <CandidatesTable />
+          <CandidatesTable userCanMutate={showCreateAction} />
         </Suspense>
       </div>
     </AppShell>

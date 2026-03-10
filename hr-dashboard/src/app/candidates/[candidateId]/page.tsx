@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/layout'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -46,8 +46,10 @@ export default async function CandidateDetailPage({ params }: PageParams) {
   })
 
   if (!candidate) {
-    notFound()
+    return notFound()
   }
+
+  const userCanMutate = canMutate(session.user.role)
 
   return (
     <AppShell
@@ -67,10 +69,12 @@ export default async function CandidateDetailPage({ params }: PageParams) {
               <p className="text-sm text-muted-foreground mt-1">{candidate.currentCompany}</p>
             )}
           </div>
-          <Link href={`/candidates/${candidateId}/edit`} className={buttonVariants({ variant: 'outline' })}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit
-          </Link>
+          {userCanMutate ? (
+            <Link href={`/candidates/${candidateId}/edit`} className={buttonVariants({ variant: 'outline' })}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Link>
+          ) : null}
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
@@ -164,7 +168,7 @@ export default async function CandidateDetailPage({ params }: PageParams) {
               candidateId={candidateId}
               resumeKey={candidate.resumeKey}
               resumeName={candidate.resumeName}
-              userCanMutate={canMutate(session.user.role)}
+              userCanMutate={userCanMutate}
             />
           </div>
         </div>

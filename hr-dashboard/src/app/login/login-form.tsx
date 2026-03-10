@@ -8,10 +8,23 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
+function isValidCallbackUrl(url: string | null): url is string {
+  if (!url) return false
+  // Only allow relative URLs starting with /
+  // Reject absolute URLs, protocol-relative URLs, or URLs with encoded characters
+  if (!url.startsWith('/')) return false
+  if (url.startsWith('//')) return false
+  if (url.includes('://')) return false
+  // Reject URLs with backslashes (potential bypass)
+  if (url.includes('\\')) return false
+  return true
+}
+
 export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/'
+  const rawCallbackUrl = searchParams.get('callbackUrl')
+  const callbackUrl = isValidCallbackUrl(rawCallbackUrl) ? rawCallbackUrl : '/'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -37,7 +50,6 @@ export function LoginForm() {
       }
 
       router.push(callbackUrl)
-      router.refresh()
     } catch {
       setError('An error occurred. Please try again.')
       setIsLoading(false)

@@ -10,18 +10,31 @@ export interface StorageConfig {
 
 const UPLOAD_URL_EXPIRY_SECONDS = 15 * 60 // 15 minutes
 const DOWNLOAD_URL_EXPIRY_SECONDS = 5 * 60 // 5 minutes
+const RESUME_KEY_REGEX = /^resumes\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(pdf|doc|docx|txt|rtf)$/i
 
 function getS3Client(): S3Client {
   const endpoint = process.env.STORAGE_ENDPOINT
   const region = process.env.STORAGE_REGION || 'us-east-1'
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+
+  if ((accessKeyId && !secretAccessKey) || (!accessKeyId && secretAccessKey)) {
+    throw new Error(
+      'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set together'
+    )
+  }
 
   return new S3Client({
     region,
     ...(endpoint && { endpoint, forcePathStyle: true }),
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-    },
+    ...(accessKeyId && secretAccessKey
+      ? {
+          credentials: {
+            accessKeyId,
+            secretAccessKey,
+          },
+        }
+      : {}),
   })
 }
 
@@ -46,9 +59,14 @@ export function generateObjectKey(originalFilename: string): string {
 function getFileExtension(filename: string): string {
   const parts = filename.split('.')
   if (parts.length > 1) {
-    return parts[parts.length - 1]?.toLowerCase() || ''
+    const extension = parts[parts.length - 1]?.trim().toLowerCase() || ''
+    return /^[a-z0-9]+$/.test(extension) ? extension : ''
   }
   return ''
+}
+
+export function isValidResumeKey(key: string): boolean {
+  return RESUME_KEY_REGEX.test(key)
 }
 
 /**

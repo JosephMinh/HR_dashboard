@@ -1,23 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowUpDown, Briefcase, ChevronDown, Plus } from 'lucide-react'
+import { AlertTriangle, Briefcase, ChevronDown, Plus } from 'lucide-react'
+import type { ColumnDef, PaginationState, SortingState } from '@tanstack/react-table'
 
-import { Button, buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
+import { DataTable } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { FilterBar } from '@/components/ui/filter-bar'
-import { TableSkeleton } from '@/components/ui/loading-skeleton'
 import { SearchInput } from '@/components/ui/search-input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -28,26 +21,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { JobStatusBadge, PipelineHealthBadge } from '@/components/ui/status-badge'
 import { JOB_STATUS } from '@/lib/status-config'
-
-interface JobSummary {
-  id: string
-  title: string
-  department: string
-  status: string
-  pipelineHealth: string | null
-  isCritical: boolean
-  activeCandidateCount?: number
-  openedAt: string | null
-  targetFillDate: string | null
-}
-
-interface JobsResponse {
-  jobs: JobSummary[]
-  total: number
-}
+import { useJobsQuery, type Job } from '@/hooks/queries'
 
 type SortField = 'title' | 'department' | 'status' | 'openedAt' | 'targetFillDate' | 'updatedAt'
-type SortOrder = 'asc' | 'desc'
+const ITEMS_PER_PAGE = 20
+const DEFAULT_SORTING: SortingState = [{ id: 'updatedAt', desc: true }]
 
 function formatDate(value: string | null) {
   if (!value) return '-'
@@ -56,96 +34,182 @@ function formatDate(value: string | null) {
   return date.toLocaleDateString()
 }
 
-function toParam(values: string[]) {
-  return values.length ? values.join(',') : ''
-}
+// Column definitions for TanStack Table
+const columns: ColumnDef<Job>[] = [
+  {
+    accessorKey: 'title',
+    header: 'Title',
+    enableSorting: true,
+    cell: ({ row }) => (
+      <>
+        <Link
+          href={`/jobs/${row.original.id}`}
+          className="font-medium hover:underline flex items-center gap-2"
+        >
+          {row.original.isCritical && (
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          )}
+          {row.original.title}
+        </Link>
+        <div className="text-xs text-muted-foreground md:hidden">
+          {row.original.department}
+        </div>
+      </>
+    ),
+    meta: { headerClassName: 'w-[240px]' },
+  },
+  {
+    accessorKey: 'department',
+    header: 'Department',
+    enableSorting: true,
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{row.original.department}</span>
+    ),
+    meta: { headerClassName: 'hidden md:table-cell', cellClassName: 'hidden md:table-cell' },
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    enableSorting: true,
+    cell: ({ row }) => <JobStatusBadge value={row.original.status} size="sm" />,
+  },
+  {
+    id: 'critical',
+    header: 'Critical',
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.isCritical ? (
+        <span className="inline-flex items-center gap-1 text-sm text-red-600">
+          <AlertTriangle className="h-4 w-4" />
+          Critical
+        </span>
+      ) : (
+        <span className="text-muted-foreground">-</span>
+      ),
+    meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden lg:table-cell' },
+  },
+  {
+    id: 'pipelineHealth',
+    header: 'Pipeline',
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.pipelineHealth ? (
+        <PipelineHealthBadge value={row.original.pipelineHealth} size="sm" />
+      ) : (
+        <span className="text-muted-foreground">-</span>
+      ),
+    meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden lg:table-cell' },
+  },
+  {
+    id: 'candidateCount',
+    header: 'Candidates',
+    enableSorting: false,
+    cell: ({ row }) => (
+      <span className="text-center block">{row.original.activeCandidateCount ?? '-'}</span>
+    ),
+    meta: { headerClassName: 'text-center', cellClassName: 'text-center' },
+  },
+  {
+    accessorKey: 'openedAt',
+    header: 'Opened',
+    enableSorting: true,
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{formatDate(row.original.openedAt)}</span>
+    ),
+    meta: { headerClassName: 'hidden md:table-cell', cellClassName: 'hidden md:table-cell' },
+  },
+  {
+    accessorKey: 'targetFillDate',
+    header: 'Target Fill',
+    enableSorting: true,
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{formatDate(row.original.targetFillDate)}</span>
+    ),
+    meta: { headerClassName: 'hidden xl:table-cell', cellClassName: 'hidden xl:table-cell' },
+  },
+]
 
 interface AllJobsTableProps {
   userCanMutate: boolean
 }
 
 export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
-  const [jobs, setJobs] = useState<JobSummary[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
+  // Local filter state (dashboard doesn't use URL params)
   const [search, setSearch] = useState('')
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
-  const [sort, setSort] = useState<SortField>('updatedAt')
-  const [order, setOrder] = useState<SortOrder>('desc')
+  const [sorting, setSorting] = useState<SortingState>(DEFAULT_SORTING)
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: ITEMS_PER_PAGE,
+  })
+
+  // Derive sort field and order from sorting state
+  const sortField: SortField = (sorting[0]?.id as SortField | undefined) ?? 'updatedAt'
+  const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'
+
+  // Use TanStack Query for data fetching
+  const { data, isLoading, error, refetch } = useJobsQuery({
+    search: search.trim() || undefined,
+    status: selectedStatuses.length > 0 ? selectedStatuses.join(',') : undefined,
+    department: selectedDepartments.length > 0 ? selectedDepartments : undefined,
+    sort: sortField,
+    order: sortOrder,
+    page: pagination.pageIndex + 1,
+    limit: pagination.pageSize,
+    includeCount: true,
+  })
+
+  const jobs = data?.jobs ?? []
+  const total = data?.total ?? 0
+  const totalPages = data?.totalPages ?? 0
 
   const departmentOptions = useMemo(() => {
-    const unique = new Set(jobs.map((job) => job.department).filter(Boolean))
+    const jobList = data?.jobs ?? []
+    const unique = new Set(jobList.map((job) => job.department).filter(Boolean))
     return Array.from(unique).sort((a, b) => a.localeCompare(b))
-  }, [jobs])
+  }, [data?.jobs])
 
-  const toggleValue = (
-    value: string,
-    selected: string[],
-    setter: (next: string[]) => void,
-  ) => {
-    if (selected.includes(value)) {
-      setter(selected.filter((item) => item !== value))
-    } else {
-      setter([...selected, value])
-    }
+  const resetToFirstPage = () => {
+    setPagination((current) => ({
+      ...current,
+      pageIndex: 0,
+    }))
+  }
+
+  const toggleValue = (value: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    resetToFirstPage()
+    setter((selected) =>
+      selected.includes(value)
+        ? selected.filter((item) => item !== value)
+        : [...selected, value],
+    )
   }
 
   const clearFilters = () => {
     setSearch('')
     setSelectedStatuses([])
     setSelectedDepartments([])
-    setSort('updatedAt')
-    setOrder('desc')
+    setSorting(DEFAULT_SORTING)
+    setPagination({
+      pageIndex: 0,
+      pageSize: ITEMS_PER_PAGE,
+    })
   }
 
-  const fetchJobs = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    const params = new URLSearchParams()
-    if (search.trim()) params.set('search', search.trim())
-    if (selectedStatuses.length) params.set('status', toParam(selectedStatuses))
-    if (selectedDepartments.length) {
-      params.set('department', toParam(selectedDepartments))
-    }
-    params.set('sort', sort)
-    params.set('order', order)
-    params.set('includeCount', 'true')
-
-    try {
-      const response = await fetch(`/api/jobs?${params.toString()}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch jobs')
+  const handleSortingChange = (
+    updater: SortingState | ((current: SortingState) => SortingState),
+  ) => {
+    setSorting((current) => {
+      const nextSorting = typeof updater === 'function' ? updater(current) : updater
+      // Backend supports a single sort field only.
+      const primarySort = nextSorting[0]
+      if (primarySort === undefined) {
+        return []
       }
-      const data: JobsResponse = await response.json()
-      setJobs(data.jobs)
-      setTotal(data.total)
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : 'An unexpected error occurred',
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [search, selectedStatuses, selectedDepartments, sort, order])
-
-  useEffect(() => {
-    void fetchJobs()
-  }, [fetchJobs])
-
-  const toggleSort = (field: SortField) => {
-    if (sort === field) {
-      setOrder(order === 'asc' ? 'desc' : 'asc')
-      return
-    }
-
-    setSort(field)
-    setOrder(field === 'updatedAt' ? 'desc' : 'asc')
+      return [primarySort]
+    })
+    resetToFirstPage()
   }
 
   const hasFilters =
@@ -154,7 +218,7 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
     selectedDepartments.length > 0
 
   if (error) {
-    return <ErrorState message={error} onRetry={fetchJobs} />
+    return <ErrorState message={error.message} onRetry={() => void refetch()} />
   }
 
   return (
@@ -172,7 +236,10 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
       <FilterBar showClearAll={hasFilters} onClearAll={clearFilters}>
         <SearchInput
           value={search}
-          onChange={setSearch}
+          onChange={(value) => {
+            setSearch(value)
+            resetToFirstPage()
+          }}
           placeholder="Search jobs..."
           fullWidth={false}
           className="w-60"
@@ -192,7 +259,7 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
                 key={key}
                 checked={selectedStatuses.includes(key)}
                 onCheckedChange={() =>
-                  toggleValue(key, selectedStatuses, setSelectedStatuses)
+                  toggleValue(key, setSelectedStatuses)
                 }
               >
                 {config.label}
@@ -220,11 +287,7 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
                   key={department}
                   checked={selectedDepartments.includes(department)}
                   onCheckedChange={() =>
-                    toggleValue(
-                      department,
-                      selectedDepartments,
-                      setSelectedDepartments,
-                    )
+                    toggleValue(department, setSelectedDepartments)
                   }
                 >
                   {department}
@@ -235,9 +298,7 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
         </DropdownMenu>
       </FilterBar>
 
-      {loading ? (
-        <TableSkeleton rows={6} columns={8} />
-      ) : jobs.length === 0 ? (
+      {jobs.length === 0 && !isLoading ? (
         <EmptyState
           icon={Briefcase}
           title="No jobs found"
@@ -248,131 +309,19 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
           }
         />
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[240px]">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSort('title')}
-                    className="-ml-3"
-                  >
-                    Title
-                    <ArrowUpDown className="ml-1 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="hidden md:table-cell">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSort('department')}
-                    className="-ml-3"
-                  >
-                    Department
-                    <ArrowUpDown className="ml-1 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSort('status')}
-                    className="-ml-3"
-                  >
-                    Status
-                    <ArrowUpDown className="ml-1 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="hidden lg:table-cell">Critical</TableHead>
-                <TableHead className="hidden lg:table-cell">Pipeline</TableHead>
-                <TableHead className="text-center">Candidates</TableHead>
-                <TableHead className="hidden md:table-cell">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSort('openedAt')}
-                    className="-ml-3"
-                  >
-                    Opened
-                    <ArrowUpDown className="ml-1 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="hidden xl:table-cell">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSort('targetFillDate')}
-                    className="-ml-3"
-                  >
-                    Target Fill
-                    <ArrowUpDown className="ml-1 h-3 w-3" />
-                  </Button>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.map((job) => (
-                <TableRow key={job.id}>
-                  <TableCell>
-                    <Link
-                      href={`/jobs/${job.id}`}
-                      className="font-medium hover:underline flex items-center gap-2"
-                    >
-                      {job.isCritical ? (
-                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                      ) : null}
-                      {job.title}
-                    </Link>
-                    <div className="text-xs text-muted-foreground md:hidden">
-                      {job.department}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground hidden md:table-cell">
-                    {job.department}
-                  </TableCell>
-                  <TableCell>
-                    <JobStatusBadge value={job.status} size="sm" />
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    {job.isCritical ? (
-                      <span className="inline-flex items-center gap-1 text-sm text-red-600">
-                        <AlertTriangle className="h-4 w-4" />
-                        Critical
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    {job.pipelineHealth ? (
-                      <PipelineHealthBadge value={job.pipelineHealth} size="sm" />
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {job.activeCandidateCount ?? '-'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground hidden md:table-cell">
-                    {formatDate(job.openedAt)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground hidden xl:table-cell">
-                    {formatDate(job.targetFillDate)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={jobs}
+          sorting={sorting}
+          onSortingChange={handleSortingChange}
+          pagination={pagination}
+          onPaginationChange={setPagination}
+          pageCount={totalPages}
+          isLoading={isLoading}
+          emptyMessage="No jobs found"
+          totalCount={total}
+        />
       )}
-
-      {!loading && jobs.length > 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Showing {jobs.length} of {total} jobs
-        </p>
-      ) : null}
     </div>
   )
 }

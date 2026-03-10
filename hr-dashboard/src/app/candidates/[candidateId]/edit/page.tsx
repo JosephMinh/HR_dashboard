@@ -27,7 +27,7 @@ export default async function EditCandidatePage({ params }: PageParams) {
   })
 
   if (!candidate) {
-    notFound()
+    return notFound()
   }
 
   return (

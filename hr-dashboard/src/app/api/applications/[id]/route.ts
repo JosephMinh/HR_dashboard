@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { getClientIp, logAuditUpdate, logAuditDelete } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { AuthorizationError, requireMutate } from '@/lib/permissions'
 import { ApplicationStage } from '@/generated/prisma/client'
@@ -66,6 +67,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     data.interviewNotes = body.interviewNotes?.trim() || null
   }
 
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json(
+      { error: 'No valid fields provided for update' },
+      { status: 400 },
+    )
+  }
+
   const application = await prisma.application.update({
     where: { id },
     data,
@@ -86,6 +94,25 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         },
       },
     },
+  })
+
+  // Audit log
+  await logAuditUpdate({
+    userId: session.user.id ?? null,
+    action: 'APPLICATION_UPDATED',
+    entityType: 'Application',
+    entityId: application.id,
+    before: {
+      stage: existing.stage,
+      recruiterOwner: existing.recruiterOwner,
+      interviewNotes: existing.interviewNotes,
+    },
+    after: {
+      stage: application.stage,
+      recruiterOwner: application.recruiterOwner,
+      interviewNotes: application.interviewNotes,
+    },
+    ipAddress: getClientIp(request),
   })
 
   return NextResponse.json({
@@ -127,6 +154,21 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   await prisma.application.delete({ where: { id } })
+
+  // Audit log
+  await logAuditDelete({
+    userId: session.user.id ?? null,
+    action: 'APPLICATION_DELETED',
+    entityType: 'Application',
+    entityId: id,
+    deleted: {
+      jobId: existing.jobId,
+      candidateId: existing.candidateId,
+      stage: existing.stage,
+      recruiterOwner: existing.recruiterOwner,
+    },
+    ipAddress: getClientIp(request),
+  })
 
   return NextResponse.json({ success: true })
 }

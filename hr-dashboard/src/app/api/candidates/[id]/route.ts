@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth'
 import { getClientIp, logAuditUpdate } from '@/lib/audit'
 import { AuthorizationError, requireMutate } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
+import { isValidResumeKey } from '@/lib/storage'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -181,6 +182,27 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Candidate not found' }, { status: 404 })
   }
 
+  const incomingResumeKey =
+    body.resumeKey !== undefined ? body.resumeKey?.trim() || null : undefined
+  const incomingResumeName =
+    body.resumeName !== undefined ? body.resumeName?.trim() || null : undefined
+
+  if (incomingResumeKey && !isValidResumeKey(incomingResumeKey)) {
+    return NextResponse.json({ error: 'Invalid resume key format' }, { status: 400 })
+  }
+
+  const effectiveResumeKey =
+    incomingResumeKey !== undefined ? incomingResumeKey : existing.resumeKey
+  const effectiveResumeName =
+    incomingResumeName !== undefined ? incomingResumeName : existing.resumeName
+
+  if ((effectiveResumeKey && !effectiveResumeName) || (!effectiveResumeKey && effectiveResumeName)) {
+    return NextResponse.json(
+      { error: 'resumeKey and resumeName must be provided together' },
+      { status: 400 },
+    )
+  }
+
   const data: PrismaUpdateData = {}
 
   if (body.firstName !== undefined) {
@@ -234,8 +256,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   if (body.phone !== undefined) data.phone = body.phone?.trim() || null
   if (body.currentCompany !== undefined) data.currentCompany = body.currentCompany?.trim() || null
   if (body.location !== undefined) data.location = body.location?.trim() || null
-  if (body.resumeKey !== undefined) data.resumeKey = body.resumeKey?.trim() || null
-  if (body.resumeName !== undefined) data.resumeName = body.resumeName?.trim() || null
+  if (incomingResumeKey !== undefined) data.resumeKey = incomingResumeKey
+  if (incomingResumeName !== undefined) data.resumeName = incomingResumeName
   if (body.notes !== undefined) data.notes = body.notes?.trim() || null
 
   if (Object.keys(data).length === 0) {

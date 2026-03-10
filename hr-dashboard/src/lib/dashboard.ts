@@ -84,6 +84,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         job: {
           status: JobStatus.OPEN,
         },
+        stage: {
+          notIn: [...INACTIVE_APPLICATION_STAGES],
+        },
       },
       distinct: ["candidateId"],
       select: {

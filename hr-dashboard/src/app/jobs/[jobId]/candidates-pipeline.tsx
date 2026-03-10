@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
 import { Loader2, Trash2, ChevronDown } from "lucide-react"
 import {
   Table,
@@ -23,8 +23,11 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
+import { api } from "@/lib/api-client"
+import { queryKeys } from "@/lib/query-keys"
 import { cn } from "@/lib/utils"
 import { APPLICATION_STAGE, getOrderedStages, getStatusColorClasses, type StatusColor } from "@/lib/status-config"
+import { useDeleteApplicationMutation, useUpdateApplicationMutation } from "@/hooks/queries"
 
 interface Application {
   id: string
@@ -40,59 +43,108 @@ interface Application {
 }
 
 interface CandidatesPipelineProps {
+  jobId: string
   applications: Application[]
   userCanMutate: boolean
 }
 
-export function CandidatesPipeline({ applications, userCanMutate }: CandidatesPipelineProps) {
-  const router = useRouter()
+interface JobDetailApplicationsResponse {
+  applications: Array<{
+    id: string
+    stage: string
+    stageUpdatedAt: string
+    candidate: {
+      id: string
+      firstName: string
+      lastName: string
+      email: string | null
+      currentCompany: string | null
+    }
+  }>
+}
+
+export function CandidatesPipeline({ jobId, applications, userCanMutate }: CandidatesPipelineProps) {
+  const [localApplications, setLocalApplications] = React.useState(applications)
   const [updatingId, setUpdatingId] = React.useState<string | null>(null)
   const [unlinkingId, setUnlinkingId] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const updateApplicationMutation = useUpdateApplicationMutation()
+  const deleteApplicationMutation = useDeleteApplicationMutation()
+  const { data: latestApplications = applications } = useQuery({
+    queryKey: queryKeys.applications.byJob(jobId),
+    queryFn: async () => {
+      const response = await api.get<JobDetailApplicationsResponse>(`/api/jobs/${jobId}`)
+      return response.applications.map((application) => ({
+        id: application.id,
+        stage: application.stage,
+        stageUpdatedAt: application.stageUpdatedAt,
+        candidate: {
+          id: application.candidate.id,
+          firstName: application.candidate.firstName,
+          lastName: application.candidate.lastName,
+          email: application.candidate.email,
+          currentCompany: application.candidate.currentCompany,
+        },
+      }))
+    },
+    initialData: applications,
+  })
+
+  React.useEffect(() => {
+    setLocalApplications(latestApplications)
+  }, [latestApplications])
 
   const handleStageChange = async (applicationId: string, newStage: string) => {
     setUpdatingId(applicationId)
     setError(null)
 
     try {
-      const response = await fetch(`/api/applications/${applicationId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage: newStage }),
+      const updated = await updateApplicationMutation.mutateAsync({
+        id: applicationId,
+        stage: newStage,
       })
 
-      if (!response.ok) {
-        const data = await response.json()
-        setError(data.error || "Failed to update stage")
-        return
-      }
-
-      router.refresh()
-    } catch {
-      setError("Failed to update stage")
+      setLocalApplications((current) =>
+        current.map((app) =>
+          app.id === applicationId
+            ? {
+                ...app,
+                stage: updated.stage,
+                stageUpdatedAt: updated.stageUpdatedAt,
+              }
+            : app,
+        ),
+      )
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to update stage",
+      )
     } finally {
       setUpdatingId(null)
     }
   }
 
-  const handleUnlink = async (applicationId: string) => {
+  const handleUnlink = async (applicationId: string, candidateId: string) => {
     setUnlinkingId(applicationId)
     setError(null)
 
     try {
-      const response = await fetch(`/api/applications/${applicationId}`, {
-        method: "DELETE",
+      await deleteApplicationMutation.mutateAsync({
+        id: applicationId,
+        candidateId,
       })
 
-      if (!response.ok) {
-        const data = await response.json()
-        setError(data.error || "Failed to remove candidate")
-        return
-      }
-
-      router.refresh()
-    } catch {
-      setError("Failed to remove candidate")
+      setLocalApplications((current) =>
+        current.filter((app) => app.id !== applicationId),
+      )
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to remove candidate",
+      )
     } finally {
       setUnlinkingId(null)
     }
@@ -119,7 +171,7 @@ export function CandidatesPipeline({ applications, userCanMutate }: CandidatesPi
           </TableRow>
         </TableHeader>
         <TableBody>
-          {applications.map((app) => {
+          {localApplications.map((app) => {
             const stageConfig = APPLICATION_STAGE[app.stage]
             const color = stageConfig?.color as StatusColor | undefined
             const colorClasses = color ? getStatusColorClasses(color) : null
@@ -172,7 +224,7 @@ export function CandidatesPipeline({ applications, userCanMutate }: CandidatesPi
                     <UnlinkDialog
                       candidateName={`${app.candidate.firstName} ${app.candidate.lastName}`}
                       isUnlinking={isUnlinking}
-                      onConfirm={() => handleUnlink(app.id)}
+                      onConfirm={() => handleUnlink(app.id, app.candidate.id)}
                     />
                   </TableCell>
                 )}
