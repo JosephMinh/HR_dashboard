@@ -220,13 +220,15 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
         firstName: "Margaret",
         lastName: "Hamilton",
       })
+      // Use a valid UUID format that doesn't exist in the database
+      const nonExistentJobId = "00000000-0000-4000-a000-000000000000"
 
       const { POST } = await import("@/app/api/applications/route")
       const response = await POST(
         new Request("http://localhost/api/applications", {
           method: "POST",
           body: JSON.stringify({
-            jobId: "missing-job",
+            jobId: nonExistentJobId,
             candidateId: candidate.id,
           }),
         }) as never,
@@ -238,6 +240,8 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
 
     it("returns 404 when candidate is missing", async () => {
       const job = await factories.createJob({ title: "Infra Engineer" })
+      // Use a valid UUID format that doesn't exist in the database
+      const nonExistentCandidateId = "00000000-0000-4000-a000-000000000000"
 
       const { POST } = await import("@/app/api/applications/route")
       const response = await POST(
@@ -245,7 +249,7 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
           method: "POST",
           body: JSON.stringify({
             jobId: job.id,
-            candidateId: "missing-candidate",
+            candidateId: nonExistentCandidateId,
           }),
         }) as never,
       )
@@ -421,14 +425,16 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
 
     it("returns 404 when application is missing", async () => {
       await signInAs("ADMIN")
+      // Use a valid UUID format that doesn't exist in the database
+      const nonExistentId = "00000000-0000-4000-a000-000000000000"
 
       const { PATCH } = await import("@/app/api/applications/[id]/route")
       const response = await PATCH(
-        new Request("http://localhost/api/applications/missing", {
+        new Request(`http://localhost/api/applications/${nonExistentId}`, {
           method: "PATCH",
           body: JSON.stringify({ stage: "SCREENING" }),
         }) as never,
-        { params: Promise.resolve({ id: "missing" }) },
+        { params: Promise.resolve({ id: nonExistentId }) },
       )
 
       expect(response.status).toBe(404)
@@ -530,13 +536,15 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
 
     it("returns 404 when application does not exist", async () => {
       await signInAs("ADMIN")
+      // Use a valid UUID format that doesn't exist in the database
+      const nonExistentId = "00000000-0000-4000-a000-000000000000"
 
       const { DELETE } = await import("@/app/api/applications/[id]/route")
       const response = await DELETE(
-        new Request("http://localhost/api/applications/missing", {
+        new Request(`http://localhost/api/applications/${nonExistentId}`, {
           method: "DELETE",
         }) as never,
-        { params: Promise.resolve({ id: "missing" }) },
+        { params: Promise.resolve({ id: nonExistentId }) },
       )
 
       expect(response.status).toBe(404)

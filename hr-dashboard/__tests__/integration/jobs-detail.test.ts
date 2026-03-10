@@ -69,9 +69,11 @@ describe("Integration: GET/PATCH /api/jobs/[id]", () => {
 
   it("returns 404 when job is missing", async () => {
     const { GET } = await import("@/app/api/jobs/[id]/route")
+    // Use a valid UUID format that doesn't exist in the database
+    const nonExistentId = "00000000-0000-4000-a000-000000000000"
     const response = await GET(
-      new Request("http://localhost/api/jobs/missing") as never,
-      { params: Promise.resolve({ id: "missing" }) },
+      new Request(`http://localhost/api/jobs/${nonExistentId}`) as never,
+      { params: Promise.resolve({ id: nonExistentId }) },
     )
 
     expect(response.status).toBe(404)

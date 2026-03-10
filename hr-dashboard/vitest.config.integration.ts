@@ -72,7 +72,8 @@ export default defineConfig(({ mode }) => {
       env: {
         DATABASE_URL:
           env.DATABASE_URL_TEST ??
-          "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test?schema=test",
+          env.DATABASE_URL ??
+          "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test?schema=public",
         AUTH_SECRET: "test-secret-key-for-testing-only",
         NODE_ENV: "test",
       },

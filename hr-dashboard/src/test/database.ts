@@ -1,5 +1,5 @@
 const DEFAULT_TEST_DATABASE_URL =
-  "postgresql://postgres:postgres@localhost:5432/hr_dashboard_test?schema=public"
+  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test?schema=public"
 
 export function getTestDatabaseUrl(): string {
   return process.env.DATABASE_URL_TEST ?? DEFAULT_TEST_DATABASE_URL

@@ -89,7 +89,7 @@ export function setupIntegrationTests(options?: {
  * Create test data factories for common entities
  */
 export function createTestFactories() {
-  const prisma = getTestPrisma()
+  const prisma = () => getTestPrisma()
 
   return {
     /**
@@ -103,7 +103,7 @@ export function createTestFactories() {
         passwordHash?: string
       } = {},
     ) {
-      return prisma.user.create({
+      return prisma().user.create({
         data: {
           name: data.name ?? "Test User",
           email: data.email ?? `test-${Date.now()}@example.com`,
@@ -125,7 +125,7 @@ export function createTestFactories() {
         priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
       } = {},
     ) {
-      return prisma.job.create({
+      return prisma().job.create({
         data: {
           title: data.title ?? "Test Job",
           department: data.department ?? "Engineering",
@@ -147,7 +147,7 @@ export function createTestFactories() {
         source?: "REFERRAL" | "LINKEDIN" | "CAREERS_PAGE" | "AGENCY" | "OTHER"
       } = {},
     ) {
-      return prisma.candidate.create({
+      return prisma().candidate.create({
         data: {
           firstName: data.firstName ?? "Test",
           lastName: data.lastName ?? "Candidate",
@@ -174,7 +174,7 @@ export function createTestFactories() {
         | "WITHDRAWN"
       recruiterOwner?: string
     }) {
-      return prisma.application.create({
+      return prisma().application.create({
         data: {
           jobId: data.jobId,
           candidateId: data.candidateId,

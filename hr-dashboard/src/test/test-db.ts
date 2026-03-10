@@ -108,7 +108,7 @@ export async function cleanTables(
  */
 export async function pushSchema(): Promise<void> {
   try {
-    execSync("npx prisma db push --skip-generate --accept-data-loss", {
+    execSync("npx prisma db push --accept-data-loss", {
       env: {
         ...process.env,
         DATABASE_URL: TEST_DATABASE_URL,

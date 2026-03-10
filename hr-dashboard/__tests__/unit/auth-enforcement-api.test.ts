@@ -12,6 +12,7 @@ const isValidResumeTypeMock = vi.fn()
 const isValidResumeKeyMock = vi.fn()
 const generateObjectKeyMock = vi.fn()
 const getContentTypeMock = vi.fn()
+const VALID_RESUME_SIZE_BYTES = 1024
 
 vi.mock('@/lib/auth', () => ({
   auth: authMock,
@@ -42,6 +43,11 @@ vi.mock('@/lib/storage', () => ({
   isValidResumeType: isValidResumeTypeMock,
   isValidResumeKey: isValidResumeKeyMock,
   MAX_RESUME_SIZE_BYTES: 10 * 1024 * 1024,
+}))
+
+vi.mock('@/lib/validations', () => ({
+  isValidUUID: () => true, // Allow all UUIDs in tests
+  isValidEmail: () => true,
 }))
 
 describe('API auth enforcement', () => {
@@ -344,7 +350,7 @@ describe('API auth enforcement', () => {
     const response = await POST(
       new Request('http://localhost/api/upload/resume', {
         method: 'POST',
-        body: JSON.stringify({ filename: 'resume.pdf' }),
+        body: JSON.stringify({ filename: 'resume.pdf', sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -364,7 +370,7 @@ describe('API auth enforcement', () => {
     const response = await POST(
       new Request('http://localhost/api/upload/resume', {
         method: 'POST',
-        body: JSON.stringify({ filename: 'resume.pdf' }),
+        body: JSON.stringify({ filename: 'resume.pdf', sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -392,6 +398,7 @@ describe('API auth enforcement', () => {
         method: 'POST',
         body: JSON.stringify({
           filename: 'resume.pdf',
+          sizeBytes: VALID_RESUME_SIZE_BYTES,
           contentType: 'text/plain',
         }),
       }) as never,
@@ -415,6 +422,7 @@ describe('API auth enforcement', () => {
         method: 'POST',
         body: JSON.stringify({
           filename: 'resume.pdf',
+          sizeBytes: VALID_RESUME_SIZE_BYTES,
           contentType: 'application/pdf; charset=utf-8',
         }),
       }) as never,
@@ -438,6 +446,7 @@ describe('API auth enforcement', () => {
         method: 'POST',
         body: JSON.stringify({
           filename: 'resume.pdf',
+          sizeBytes: VALID_RESUME_SIZE_BYTES,
           contentType: 'application/octet-stream',
         }),
       }) as never,
@@ -450,7 +459,7 @@ describe('API auth enforcement', () => {
     )
   })
 
-  it('returns 503 with config details when upload storage is misconfigured', async () => {
+  it('returns a generic 503 when upload storage is misconfigured', async () => {
     authMock.mockResolvedValue({
       user: { id: 'recruiter-1', role: 'RECRUITER' },
     })
@@ -474,20 +483,13 @@ describe('API auth enforcement', () => {
     const response = await POST(
       new Request('http://localhost/api/upload/resume', {
         method: 'POST',
-        body: JSON.stringify({ filename: 'resume.pdf' }),
+        body: JSON.stringify({ filename: 'resume.pdf', sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toEqual({
-      error: 'Resume storage is not configured correctly',
-      details:
-        'Storage configuration invalid. Missing required storage environment variables: STORAGE_BUCKET',
-      missing: ['STORAGE_BUCKET'],
-      issues: [],
-      warnings: [
-        'AWS credentials are not explicitly set. Ensure the runtime provides credentials via IAM or the default AWS credential chain.',
-      ],
+      error: 'Resume storage is temporarily unavailable',
     })
   })
 
@@ -501,7 +503,7 @@ describe('API auth enforcement', () => {
     const response = await POST(
       new Request('http://localhost/api/upload/resume', {
         method: 'POST',
-        body: JSON.stringify({ filename: 'resume.pdf' }),
+        body: JSON.stringify({ filename: 'resume.pdf', sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -509,6 +511,29 @@ describe('API auth enforcement', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'Failed to generate upload URL',
     })
+  })
+
+  it('rejects upload requests that exceed the size limit', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'recruiter-1', role: 'RECRUITER' },
+    })
+
+    const { POST } = await import('@/app/api/upload/resume/route')
+    const response = await POST(
+      new Request('http://localhost/api/upload/resume', {
+        method: 'POST',
+        body: JSON.stringify({
+          filename: 'resume.pdf',
+          sizeBytes: 10 * 1024 * 1024 + 1,
+        }),
+      }) as never,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'File size exceeds 10MB limit',
+    })
+    expect(generateUploadUrlMock).not.toHaveBeenCalled()
   })
 
   it('rejects invalid resume download keys', async () => {

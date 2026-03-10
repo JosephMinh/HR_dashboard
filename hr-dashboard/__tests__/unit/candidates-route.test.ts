@@ -17,6 +17,17 @@ vi.mock("@/lib/prisma", () => ({
   },
 }))
 
+// Mock validations to prevent zod initialization issues during test hoisting
+vi.mock("@/lib/validations", () => ({
+  isValidEmail: (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+}))
+
+// Mock storage - used by POST candidates/route.ts for resume validation
+vi.mock("@/lib/storage", () => ({
+  isValidResumeKey: (key: string) =>
+    /^resumes\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(pdf|doc|docx|txt|rtf)$/i.test(key),
+}))
+
 describe("GET /api/candidates", () => {
   beforeEach(() => {
     authMock.mockReset()

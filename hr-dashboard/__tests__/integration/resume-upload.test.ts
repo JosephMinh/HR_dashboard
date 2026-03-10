@@ -10,6 +10,7 @@ import {
 const authMock = vi.fn()
 const generateUploadUrlMock = vi.fn()
 const generateDownloadUrlMock = vi.fn()
+const VALID_RESUME_SIZE_BYTES = 1024
 
 vi.mock("@/lib/auth", () => ({
   auth: authMock,
@@ -49,7 +50,7 @@ describe("Integration: Resume upload API", () => {
     const response = await POST(
       new Request("http://localhost/api/upload/resume", {
         method: "POST",
-        body: JSON.stringify({ filename: "resume.pdf" }),
+        body: JSON.stringify({ filename: "resume.pdf", sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -64,7 +65,7 @@ describe("Integration: Resume upload API", () => {
     const response = await POST(
       new Request("http://localhost/api/upload/resume", {
         method: "POST",
-        body: JSON.stringify({ filename: "resume.pdf" }),
+        body: JSON.stringify({ filename: "resume.pdf", sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -92,7 +93,7 @@ describe("Integration: Resume upload API", () => {
     const response = await POST(
       new Request("http://localhost/api/upload/resume", {
         method: "POST",
-        body: JSON.stringify({ filename: "resume.exe" }),
+        body: JSON.stringify({ filename: "resume.exe", sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -113,7 +114,7 @@ describe("Integration: Resume upload API", () => {
     const response = await POST(
       new Request("http://localhost/api/upload/resume", {
         method: "POST",
-        body: JSON.stringify({ filename }),
+        body: JSON.stringify({ filename, sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -136,6 +137,7 @@ describe("Integration: Resume upload API", () => {
         method: "POST",
         body: JSON.stringify({
           filename: "resume.pdf",
+          sizeBytes: VALID_RESUME_SIZE_BYTES,
           contentType: "text/plain",
         }),
       }) as never,
@@ -154,6 +156,7 @@ describe("Integration: Resume upload API", () => {
         method: "POST",
         body: JSON.stringify({
           filename: "resume.pdf",
+          sizeBytes: VALID_RESUME_SIZE_BYTES,
           contentType: "application/octet-stream",
         }),
       }) as never,
@@ -165,7 +168,7 @@ describe("Integration: Resume upload API", () => {
     expect(generateUploadUrlMock).toHaveBeenCalledWith(payload.key, "application/pdf")
   })
 
-  it("returns 503 with storage configuration details when upload storage is misconfigured", async () => {
+  it("returns a generic 503 when upload storage is misconfigured", async () => {
     generateUploadUrlMock.mockRejectedValueOnce(
       Object.assign(new Error("Storage configuration invalid. Missing required storage environment variables: STORAGE_BUCKET"), {
         name: "StorageConfigError",
@@ -181,20 +184,13 @@ describe("Integration: Resume upload API", () => {
     const response = await POST(
       new Request("http://localhost/api/upload/resume", {
         method: "POST",
-        body: JSON.stringify({ filename: "resume.pdf" }),
+        body: JSON.stringify({ filename: "resume.pdf", sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toEqual({
-      error: "Resume storage is not configured correctly",
-      details:
-        "Storage configuration invalid. Missing required storage environment variables: STORAGE_BUCKET",
-      missing: ["STORAGE_BUCKET"],
-      issues: [],
-      warnings: [
-        "AWS credentials are not explicitly set. Ensure the runtime provides credentials via IAM or the default AWS credential chain.",
-      ],
+      error: "Resume storage is temporarily unavailable",
     })
   })
 
@@ -205,7 +201,7 @@ describe("Integration: Resume upload API", () => {
     const response = await POST(
       new Request("http://localhost/api/upload/resume", {
         method: "POST",
-        body: JSON.stringify({ filename: "resume.pdf" }),
+        body: JSON.stringify({ filename: "resume.pdf", sizeBytes: VALID_RESUME_SIZE_BYTES }),
       }) as never,
     )
 
@@ -213,6 +209,25 @@ describe("Integration: Resume upload API", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Failed to generate upload URL",
     })
+  })
+
+  it("returns 400 when the requested upload size exceeds the limit", async () => {
+    const { POST } = await import("@/app/api/upload/resume/route")
+    const response = await POST(
+      new Request("http://localhost/api/upload/resume", {
+        method: "POST",
+        body: JSON.stringify({
+          filename: "resume.pdf",
+          sizeBytes: 10 * 1024 * 1024 + 1,
+        }),
+      }) as never,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: "File size exceeds 10MB limit",
+    })
+    expect(generateUploadUrlMock).not.toHaveBeenCalled()
   })
 
   it("returns 401 for unauthenticated download URL requests", async () => {

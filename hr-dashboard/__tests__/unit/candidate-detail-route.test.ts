@@ -1,5 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Mock zod to prevent initialization errors in validations module
+vi.mock('zod', () => ({
+  z: {
+    string: () => ({ uuid: () => ({}), email: () => ({}), min: () => ({}), max: () => ({}), optional: () => ({ nullable: () => ({}) }), refine: () => ({}) }),
+    enum: () => ({}),
+    object: () => ({ refine: () => ({ refine: () => ({}) }), partial: () => ({ omit: () => ({}) }) }),
+    boolean: () => ({ default: () => ({}) }),
+    number: () => ({ max: () => ({}) }),
+    coerce: { date: () => ({ optional: () => ({ nullable: () => ({}) }) }) },
+  },
+}))
+
 const authMock = vi.fn()
 const findUniqueMock = vi.fn()
 const updateMock = vi.fn()
@@ -22,6 +34,19 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/audit', () => ({
   getClientIp: getClientIpMock,
   logAuditUpdate: logAuditUpdateMock,
+}))
+
+vi.mock('@/lib/storage', () => ({
+  // Use actual regex validation so tests for invalid keys work correctly
+  isValidResumeKey: (key: string) =>
+    /^resumes\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(pdf|doc|docx|txt|rtf)$/i.test(key),
+  deleteObject: vi.fn(),
+}))
+
+// Mock validations - isValidUUID and isValidEmail needed by candidates/[id]/route.ts
+vi.mock('@/lib/validations', () => ({
+  isValidUUID: () => true, // Allow test IDs
+  isValidEmail: () => true,
 }))
 
 describe('GET /api/candidates/[id]', () => {

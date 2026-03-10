@@ -38,6 +38,14 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+// Mock next/navigation (useRouter is used by CandidatesPipeline)
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}))
+
 // Minimal mock for status-config
 vi.mock('@/lib/status-config', () => ({
   APPLICATION_STAGE: {

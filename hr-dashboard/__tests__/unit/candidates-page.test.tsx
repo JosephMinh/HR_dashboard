@@ -76,7 +76,8 @@ describe("CandidatesTable", () => {
     expect(await screen.findByRole("link", { name: "Ava Chen" })).toBeInTheDocument()
     expect(screen.getByText("ava.chen@example.com")).toBeInTheDocument()
     expect(screen.getByText("Northstar Labs")).toBeInTheDocument()
-    expect(screen.getByLabelText("Resume uploaded")).toBeInTheDocument()
+    // sr-only span text - use getByText (not getByLabelText which looks for form labels)
+    expect(screen.getByText("Resume uploaded")).toBeInTheDocument()
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled()
@@ -102,6 +103,7 @@ describe("CandidatesTable", () => {
 
     renderWithQueryClient(<CandidatesTable />)
 
-    expect(await screen.findByText("No candidates found")).toBeInTheDocument()
+    // Uses StateSurface component with 'empty' type
+    expect(await screen.findByText("Nothing here yet")).toBeInTheDocument()
   })
 })

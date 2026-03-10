@@ -28,6 +28,10 @@ vi.mock('@/lib/audit', () => ({
   logAuditDelete: logAuditDeleteMock,
 }))
 
+vi.mock('@/lib/validations', () => ({
+  isValidUUID: () => true, // Allow test IDs
+}))
+
 describe('PATCH /api/applications/[id]', () => {
   beforeEach(() => {
     authMock.mockReset()

@@ -165,6 +165,18 @@ describe("validateStorageConfig", () => {
       expect(status.warnings).toHaveLength(0)
     })
 
+    it("returns issue when STORAGE_ENDPOINT is set without credentials", () => {
+      process.env.STORAGE_BUCKET = "test-bucket"
+      process.env.STORAGE_ENDPOINT = "http://localhost:9000"
+
+      const status = validateStorageConfig()
+
+      expect(status.valid).toBe(false)
+      expect(status.issues).toContain(
+        "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required when STORAGE_ENDPOINT is set."
+      )
+    })
+
     it("returns valid when neither credential is set (uses IAM/credential chain)", () => {
       process.env.STORAGE_BUCKET = "test-bucket"
 

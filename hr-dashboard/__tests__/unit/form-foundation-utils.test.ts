@@ -5,7 +5,7 @@ import { ApiError } from '@/lib/api-client'
 import { createZodFormOptions, toFormSubmissionError } from '@/hooks/forms'
 
 describe('form foundation utilities', () => {
-  it('creates TanStack Form options with zod validator wiring', () => {
+  it('creates TanStack Form options with zod validator wiring (standard timing)', () => {
     const schema = z.object({
       firstName: z.string().min(1),
       email: z.string().email(),
@@ -14,7 +14,23 @@ describe('form foundation utilities', () => {
     const options = createZodFormOptions(schema)
 
     expect(typeof options.validatorAdapter).toBe('function')
+    // Standard timing validates on blur and submit, not onChange
+    expect(options.validators.onBlur).toBe(schema)
+    expect(options.validators.onSubmit).toBe(schema)
+  })
+
+  it('creates TanStack Form options with eager timing', () => {
+    const schema = z.object({
+      firstName: z.string().min(1),
+      email: z.string().email(),
+    })
+
+    const options = createZodFormOptions(schema, { timing: 'eager' })
+
+    expect(typeof options.validatorAdapter).toBe('function')
+    // Eager timing validates on change, blur, and submit
     expect(options.validators.onChange).toBe(schema)
+    expect(options.validators.onBlur).toBe(schema)
     expect(options.validators.onSubmit).toBe(schema)
   })
 

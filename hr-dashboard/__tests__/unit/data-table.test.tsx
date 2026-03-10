@@ -103,8 +103,9 @@ describe("DataTable", () => {
       // Should render pageSize skeleton rows
       expect(rows).toHaveLength(5)
 
-      // Check for skeleton elements (animated pulse divs)
-      const skeletonCells = table.querySelectorAll(".animate-pulse")
+      // Check for skeleton elements (bg-muted divs with h-4 styling)
+      // Uses motion-safe:animate-pulse which is a Tailwind modifier class
+      const skeletonCells = table.querySelectorAll(".bg-muted.h-4")
       expect(skeletonCells.length).toBeGreaterThan(0)
     })
 
@@ -292,7 +293,7 @@ describe("DataTable", () => {
     it("shows page info text", () => {
       const pagination: PaginationState = { pageIndex: 0, pageSize: 10 }
 
-      render(
+      const { container } = render(
         <DataTable
           columns={columns}
           data={mockData}
@@ -303,7 +304,11 @@ describe("DataTable", () => {
         />
       )
 
-      expect(screen.getByText(/page 1 of 3/i)).toBeInTheDocument()
+      // Text is split for responsive design: <span class="hidden sm:inline">Page </span>1 of 3
+      // Check the pagination info container has correct text
+      const pageInfo = container.querySelector('.min-w-20.text-center')
+      expect(pageInfo).toBeInTheDocument()
+      expect(pageInfo?.textContent).toMatch(/1 of 3/)
     })
 
     it("shows result range text", () => {
@@ -321,7 +326,7 @@ describe("DataTable", () => {
       )
 
       // endRow = min((pageIndex+1) * pageSize, totalCount) = min(10, 30) = 10
-      expect(screen.getByText(/showing 1-10 of 30/i)).toBeInTheDocument()
+      expect(screen.getByText(/showing 1-10 of 30 results/i)).toBeInTheDocument()
     })
   })
 
