@@ -331,4 +331,44 @@ describe('PATCH /api/candidates/[id]', () => {
       },
     })
   })
+
+  it('returns 400 when resume key format is invalid', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    })
+    findUniqueMock.mockResolvedValue({
+      id: 'cand-22',
+      firstName: 'Lily',
+      lastName: 'Thompson',
+      email: null,
+      phone: null,
+      linkedinUrl: null,
+      currentCompany: null,
+      location: null,
+      source: null,
+      resumeKey: null,
+      resumeName: null,
+      notes: null,
+      createdAt: new Date('2026-03-09T08:50:00.000Z'),
+      updatedAt: new Date('2026-03-09T08:50:00.000Z'),
+    })
+
+    const { PATCH } = await import('@/app/api/candidates/[id]/route')
+    const response = await PATCH(
+      new Request('http://localhost/api/candidates/cand-22', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          resumeKey: 'resumes/not-a-uuid.pdf',
+          resumeName: 'resume.pdf',
+        }),
+      }) as never,
+      { params: Promise.resolve({ id: 'cand-22' }) },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invalid resume key format',
+    })
+    expect(updateMock).not.toHaveBeenCalled()
+  })
 })

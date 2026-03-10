@@ -6,6 +6,7 @@ const candidateCountMock = vi.fn()
 const candidateCreateMock = vi.fn()
 const jobFindUniqueMock = vi.fn()
 const applicationCreateMock = vi.fn()
+const transactionMock = vi.fn()
 const getClientIpMock = vi.fn()
 const logAuditCreateMock = vi.fn()
 
@@ -26,6 +27,7 @@ vi.mock("@/lib/prisma", () => ({
     application: {
       create: applicationCreateMock,
     },
+    $transaction: transactionMock,
   },
 }))
 
@@ -42,10 +44,17 @@ describe("POST /api/candidates", () => {
     candidateCreateMock.mockReset()
     jobFindUniqueMock.mockReset()
     applicationCreateMock.mockReset()
+    transactionMock.mockReset()
     getClientIpMock.mockReset()
     logAuditCreateMock.mockReset()
     getClientIpMock.mockReturnValue("127.0.0.1")
     logAuditCreateMock.mockResolvedValue(undefined)
+    transactionMock.mockImplementation(async (callback) =>
+      callback({
+        candidate: { create: candidateCreateMock },
+        application: { create: applicationCreateMock },
+      }),
+    )
   })
 
   it("returns 401 when unauthenticated", async () => {
@@ -219,5 +228,30 @@ describe("POST /api/candidates", () => {
     await expect(response.json()).resolves.toEqual({ error: "Job not found" })
     expect(candidateCreateMock).not.toHaveBeenCalled()
     expect(applicationCreateMock).not.toHaveBeenCalled()
+  })
+
+  it("returns 400 when resume key format is invalid", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "admin-1", role: "ADMIN", name: "Admin User" },
+    })
+
+    const { POST } = await import("@/app/api/candidates/route")
+    const response = await POST(
+      new Request("http://localhost/api/candidates", {
+        method: "POST",
+        body: JSON.stringify({
+          firstName: "Priya",
+          lastName: "Nair",
+          resumeKey: "resumes/not-a-uuid.pdf",
+          resumeName: "nair.pdf",
+        }),
+      }) as never,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid resume key format",
+    })
+    expect(candidateCreateMock).not.toHaveBeenCalled()
   })
 })

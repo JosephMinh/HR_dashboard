@@ -11,10 +11,26 @@ export default defineConfig({
   },
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [["html"], ["list"]] : [["list"]],
+  globalSetup: "./__tests__/e2e/global-setup.ts",
+  globalTeardown: "./__tests__/e2e/global-teardown.ts",
+  reporter: process.env.CI
+    ? [
+        ["./src/test/playwright-reporter.ts", { outputDir: "test-results/playwright" }],
+        ["junit", { outputFile: "test-results/playwright/junit.xml" }],
+        ["html", { outputFolder: "test-results/playwright/html", open: "never" }],
+        ["list"],
+      ]
+    : [
+        ["./src/test/playwright-reporter.ts", { outputDir: "test-results/playwright" }],
+        ["html", { outputFolder: "test-results/playwright/html", open: "never" }],
+        ["list"],
+      ],
+  outputDir: "./test-results/playwright-output",
   use: {
     baseURL,
     trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    video: "on-first-retry",
   },
   projects: [
     {

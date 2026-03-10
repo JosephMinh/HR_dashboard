@@ -12,10 +12,26 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["__tests__/**/*.test.{ts,tsx}"],
-    exclude: ["__tests__/e2e/**", "src/lib/__tests__/**", "node_modules/**"],
+    exclude: [
+      "__tests__/e2e/**",
+      "__tests__/integration/**",
+      "src/lib/__tests__/**",
+      "node_modules/**",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
+      reportsDirectory: "./coverage",
     },
+    reporters: process.env.CI
+      ? [
+          "default",
+          ["junit", { outputFile: "test-results/vitest/junit.xml" }],
+          ["./src/test/reporter.ts", { outputDir: "test-results/vitest" }],
+        ]
+      : [
+          "default",
+          ["./src/test/reporter.ts", { outputDir: "test-results/vitest" }],
+        ],
   },
 })

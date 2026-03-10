@@ -73,6 +73,8 @@ describe("GET /api/candidates", () => {
     expect(findManyMock).toHaveBeenCalledWith({
       where: {},
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      skip: 0,
+      take: 20,
       include: undefined,
     })
     expect(countMock).toHaveBeenCalledWith({ where: {} })
@@ -96,6 +98,9 @@ describe("GET /api/candidates", () => {
         },
       ],
       total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
     })
   })
 
@@ -151,6 +156,8 @@ describe("GET /api/candidates", () => {
         { lastName: "asc" },
         { firstName: "asc" },
       ],
+      skip: 0,
+      take: 20,
       include: {
         _count: {
           select: {
@@ -193,6 +200,9 @@ describe("GET /api/candidates", () => {
         },
       ],
       total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
     })
   })
 })
