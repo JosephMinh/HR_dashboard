@@ -100,6 +100,9 @@ model Job {
   @@index([pipelineHealth])
   @@index([updatedAt])
   @@index([targetFillDate])
+  // Composite indexes for dashboard queries
+  @@index([status, isCritical])
+  @@index([status, pipelineHealth])
 }
 
 model Candidate {
@@ -142,6 +145,8 @@ model Application {
   @@index([jobId])
   @@index([candidateId])
   @@index([stage])
+  // Composite index for filtering applications by job and stage
+  @@index([jobId, stage])
 }
 
 model AuditLog {
@@ -159,4 +164,5 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([userId])
 }

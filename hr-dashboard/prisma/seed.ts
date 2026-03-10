@@ -63,27 +63,46 @@ type SeedApplication = {
   stageUpdatedAt: Date;
 };
 
+const seedPasswordFallback = process.env.SEED_USER_PASSWORD;
+const resolveSeedPassword = (role: string, value: string | undefined): string => {
+  if (!value) {
+    throw new Error(
+      `Missing seed password for ${role}. Set SEED_${role}_PASSWORD or SEED_USER_PASSWORD before running prisma db seed.`,
+    );
+  }
+  return value;
+};
+
+const seedPasswords = {
+  ADMIN: resolveSeedPassword("ADMIN", process.env.SEED_ADMIN_PASSWORD ?? seedPasswordFallback),
+  RECRUITER: resolveSeedPassword(
+    "RECRUITER",
+    process.env.SEED_RECRUITER_PASSWORD ?? seedPasswordFallback,
+  ),
+  VIEWER: resolveSeedPassword("VIEWER", process.env.SEED_VIEWER_PASSWORD ?? seedPasswordFallback),
+};
+
 const users: SeedUser[] = [
   {
     id: "seed-user-admin",
     name: "Admin User",
     email: "admin@company.com",
     role: UserRole.ADMIN,
-    password: "admin123",
+    password: seedPasswords.ADMIN,
   },
   {
     id: "seed-user-recruiter",
     name: "Jane Recruiter",
     email: "jane.recruiter@company.com",
     role: UserRole.RECRUITER,
-    password: "recruiter123",
+    password: seedPasswords.RECRUITER,
   },
   {
     id: "seed-user-viewer",
     name: "Bob Viewer",
     email: "bob.viewer@company.com",
     role: UserRole.VIEWER,
-    password: "viewer123",
+    password: seedPasswords.VIEWER,
   },
 ];
 
