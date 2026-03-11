@@ -240,7 +240,11 @@ export function ResumeCard({
 
   // Consolidate errors for cleaner display
   const activeError = viewError || downloadError || saveError
-  const errorContext = viewError ? 'viewing' : downloadError ? 'downloading' : 'saving'
+  const errorContext = (() => {
+    if (viewError) return 'viewing'
+    if (downloadError) return 'downloading'
+    return 'saving'
+  })()
 
   return (
     <Card className="overflow-hidden border-border/50 shadow-lg shadow-black/5 dark:shadow-black/20">

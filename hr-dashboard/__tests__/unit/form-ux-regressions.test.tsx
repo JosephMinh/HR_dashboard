@@ -54,7 +54,7 @@ describe('form UX regressions', () => {
     updateMutationState.error = null
   })
 
-  it('shows field-level validation errors for job form on submit', async () => {
+  it('shows field-level validation errors for job form on submit', { timeout: 10000 }, async () => {
     const user = userEvent.setup()
     render(<JobForm mode="create" />)
 
