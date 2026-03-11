@@ -1,6 +1,10 @@
 import type { NextAuthConfig } from 'next-auth'
 
 export const authConfig = {
+  // Intentionally rely on Auth.js default host-only, httpOnly cookies with
+  // SameSite=Lax and secure-on-HTTPS behavior. Do not add custom cookie
+  // overrides or skipCSRFCheck without updating the security documentation and
+  // re-reviewing the application's CSRF posture.
   pages: {
     signIn: '/login',
   },

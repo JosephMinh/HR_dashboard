@@ -17,6 +17,16 @@ function runAuthorized(pathname: string, isLoggedIn: boolean) {
 }
 
 describe('auth.config authorized callback', () => {
+  it('uses JWT sessions for app authentication state', () => {
+    expect(authConfig.session?.strategy).toBe('jwt')
+    expect(authConfig.session?.maxAge).toBe(4 * 60 * 60)
+  })
+
+  it('does not override Auth.js cookie defaults or disable CSRF checks', () => {
+    expect('cookies' in authConfig).toBe(false)
+    expect('skipCSRFCheck' in authConfig).toBe(false)
+  })
+
   it('redirects authenticated users away from /login to /', () => {
     const result = runAuthorized('/login', true)
 

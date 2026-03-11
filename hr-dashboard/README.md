@@ -82,6 +82,21 @@ Current decision:
 - The current threat model is covered by host-only SameSite cookies plus Auth.js CSRF enforcement on sensitive auth actions.
 - Do not override Auth.js cookie settings casually; custom cookie configuration opts the app into maintaining that security policy manually.
 
+### Rate Limiting
+
+Production uses **Cloudflare proxy + rate limiting** as the primary defense. The app-level limiter remains as a secondary backstop for defense-in-depth (shared store when configured, in-memory fallback for local/dev). Do not rely on the in-memory limiter as the primary production control.
+
+Recommended Cloudflare rate-limit rules (per IP):
+
+| Scope | Limit | Window | Notes |
+| --- | --- | --- | --- |
+| `/api/auth/*` | 10 | 1 min | Prevent brute-force logins |
+| `/api/upload/*` | 20 | 1 min | Protect storage and upload endpoints |
+| `POST|PATCH|DELETE /api/*` | 60 | 1 min | Reasonable mutation rate |
+| `GET /api/*` | 300 | 1 min | Allows browsing/search without abuse |
+
+If your Cloudflare plan supports custom responses, return `429` with a `Retry-After` header for client clarity.
+
 ## Technology Stack
 
 - **Framework:** Next.js (App Router), React, TypeScript
@@ -115,7 +130,11 @@ The app exposes route handlers under `src/app/api`, including:
 
 ## API Input Validation Constraints
 
-All API routes require an authenticated session. Mutation routes require `ADMIN` or `RECRUITER` role.
+The application data routes require an authenticated session. Mutation routes on those data routes require `ADMIN` or `RECRUITER` role.
+
+`/api/auth/*` is handled by Auth.js rather than the custom route handlers summarized below, and `/api/cron/cleanup-orphaned-resumes` is an operational endpoint protected by `CRON_SECRET` when configured.
+
+Route handlers under `src/app/api` are the source of truth for the live API contract. Shared Zod/form schemas support the UI, but they should be treated as secondary until they are explicitly kept in lockstep with the server handlers.
 
 ### Jobs
 
@@ -178,6 +197,12 @@ Additional PATCH rules:
 3. `closedAt` must be non-null when status is `CLOSED`; otherwise it must be null.
 4. At least one valid field must be provided; otherwise 400 is returned.
 
+**GET `/api/jobs/:id` and DELETE `/api/jobs/:id`**
+
+- Route param `:id` must be a valid UUID.
+- `GET` returns 404 when the job does not exist.
+- `DELETE` returns 404 when the job does not exist and 403 for `VIEWER`.
+
 ### Candidates
 
 **GET `/api/candidates` (query parameters)**
@@ -206,7 +231,7 @@ Additional PATCH rules:
 | resumeKey | string | No | Must match `resumes/{uuid}.{ext}` | Must be paired with resumeName |
 | resumeName | string | No | Required if resumeKey provided | Must be paired with resumeKey |
 | notes | string | No | Trimmed, max 10000 chars | Empty becomes `null` |
-| jobId | UUID | No | Must reference existing job | If provided, creates an application |
+| jobId | string | No | Must reference existing job | If provided, creates an application |
 
 **PATCH `/api/candidates/:id` (body + route param)**
 
@@ -230,6 +255,13 @@ Additional PATCH rules:
 
 1. `resumeKey` and `resumeName` must be provided together (including when clearing).
 2. At least one valid field must be provided; otherwise 400 is returned.
+
+**GET `/api/candidates/:id` and DELETE `/api/candidates/:id`**
+
+- Route param `:id` must be a valid UUID.
+- `GET` returns 404 when the candidate does not exist.
+- `DELETE` returns 404 when the candidate does not exist and 403 for `VIEWER`.
+- Candidate deletion attempts to remove the linked resume object first, then deletes the candidate record.
 
 ### Applications
 
@@ -255,6 +287,11 @@ Route param `:id` must be a valid UUID.
 
 Additional PATCH rule: at least one valid field must be provided; otherwise 400 is returned.
 
+**DELETE `/api/applications/:id`**
+
+- Route param `:id` must be a valid UUID.
+- Returns 404 when the application does not exist and 403 for `VIEWER`.
+
 ### Resume Uploads
 
 **POST `/api/upload/resume` (body)**
@@ -268,6 +305,16 @@ Additional PATCH rule: at least one valid field must be provided; otherwise 400 
 **GET `/api/upload/resume/:key` (route param)**
 
 Route param `:key` must match `resumes/{uuid}.{ext}` where ext is `pdf`, `doc`, `docx`, `txt`, `rtf`.
+
+Additional download rules:
+
+- Requires `ADMIN` or `RECRUITER`; `VIEWER` receives 403.
+- The key must already be linked to a candidate record or the route returns 404.
+
+### Other API Routes
+
+- `GET /api/dashboard/stats` has no request parameters beyond authentication and returns 401 for unauthenticated requests.
+- `GET /api/cron/cleanup-orphaned-resumes` is an operational endpoint, not a user-facing app route. It deletes orphaned resume objects older than 7 days and expects `Authorization: Bearer $CRON_SECRET` when the secret is configured.
 
 ## Repository Structure
 
