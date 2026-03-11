@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { randomUUID } from 'crypto'
 
@@ -261,3 +261,72 @@ export function isValidResumeType(filename: string): boolean {
  * Maximum file size for resumes (10MB)
  */
 export const MAX_RESUME_SIZE_BYTES = 10 * 1024 * 1024
+
+/**
+ * Object info returned from listing operations.
+ */
+export interface StorageObject {
+  key: string
+  lastModified: Date | null
+  size: number
+}
+
+function compareStorageObjectsByAge(a: StorageObject, b: StorageObject): number {
+  const aTime = a.lastModified?.getTime() ?? Number.POSITIVE_INFINITY
+  const bTime = b.lastModified?.getTime() ?? Number.POSITIVE_INFINITY
+
+  if (aTime !== bTime) {
+    return aTime - bTime
+  }
+
+  return a.key.localeCompare(b.key)
+}
+
+/**
+ * List objects in storage with a given prefix.
+ * Scans every page and returns the oldest objects first.
+ *
+ * @param prefix - Prefix to filter objects (e.g., 'resumes/')
+ * @param maxKeys - Maximum number of objects to return after sorting; omit to return all
+ * @returns Array of storage objects with key, lastModified, and size
+ */
+export async function listObjects(
+  prefix: string,
+  maxKeys?: number
+): Promise<StorageObject[]> {
+  if (maxKeys !== undefined && maxKeys <= 0) {
+    return []
+  }
+
+  const { client, bucket } = createStorageContext()
+  const objects: StorageObject[] = []
+  let continuationToken: string | undefined
+
+  do {
+    const command = new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      MaxKeys: 1000,
+      ContinuationToken: continuationToken,
+    })
+
+    const response = await client.send(command)
+
+    if (response.Contents) {
+      for (const obj of response.Contents) {
+        if (obj.Key) {
+          objects.push({
+            key: obj.Key,
+            lastModified: obj.LastModified ?? null,
+            size: obj.Size ?? 0,
+          })
+        }
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined
+  } while (continuationToken)
+
+  const sortedObjects = objects.sort(compareStorageObjectsByAge)
+  return maxKeys === undefined ? sortedObjects : sortedObjects.slice(0, maxKeys)
+}
