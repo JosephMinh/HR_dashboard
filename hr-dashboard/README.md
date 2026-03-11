@@ -53,9 +53,34 @@ This repository contains the production application code, API layer, database sc
   - `ADMIN`
   - `RECRUITER`
   - `VIEWER`
-- Hardened HTTP security headers (CSP, frame protection, MIME sniffing protection)
+- Hardened HTTP security headers with a route-wide CSP, frame protection, MIME sniffing protection, referrer controls, and browser feature restrictions
 - Signed object URLs for controlled resume upload/download access
 - Defensive validation for file type, file size, and storage keys
+
+### Security Headers
+
+The application configures defense-in-depth response headers in [`next.config.ts`](./next.config.ts):
+
+- `Content-Security-Policy` blocks framing, disallows plugin/object content, and limits script/style/resource origins
+- `X-Frame-Options: DENY` protects legacy browsers against clickjacking
+- `X-Content-Type-Options: nosniff` disables MIME sniffing
+- `Referrer-Policy: strict-origin-when-cross-origin` limits cross-site referrer leakage
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()` disables unnecessary browser capabilities
+- `Strict-Transport-Security` is enabled in production only to enforce HTTPS without breaking local development
+
+### CSRF Posture
+
+The application uses two complementary protections for authenticated mutations:
+
+1. Auth.js session and callback cookies are left on the library defaults: host-only, `httpOnly`, `SameSite=Lax`, and automatically `secure` on HTTPS deployments.
+2. Built-in Auth.js CSRF token validation remains active for Auth.js-managed POST actions such as credentials sign-in and sign-out.
+3. Application-owned API mutations live under `src/app/api` and use only `POST`, `PATCH`, or `DELETE`. No custom `GET` route performs writes.
+
+Current decision:
+
+- Do not add a second custom CSRF token layer for the app routes at this stage.
+- The current threat model is covered by host-only SameSite cookies plus Auth.js CSRF enforcement on sensitive auth actions.
+- Do not override Auth.js cookie settings casually; custom cookie configuration opts the app into maintaining that security policy manually.
 
 ## Technology Stack
 
@@ -87,6 +112,162 @@ The app exposes route handlers under `src/app/api`, including:
 - `dashboard/stats`
 - `upload/resume`
 - `auth`
+
+## API Input Validation Constraints
+
+All API routes require an authenticated session. Mutation routes require `ADMIN` or `RECRUITER` role.
+
+### Jobs
+
+**GET `/api/jobs` (query parameters)**
+
+| Param | Type | Constraints | Default | Notes |
+| --- | --- | --- | --- | --- |
+| page | number | Integer ≥ 1 | 1 | Invalid values return 400 |
+| pageSize | number | Integer 1-100 | 20 | Invalid values return 400 |
+| sort | string | `title`, `status`, `targetFillDate`, `updatedAt`, `department`, `openedAt` | `updatedAt` | Invalid values return 400 |
+| order | string | `asc`, `desc` | `desc` | Invalid values return 400 |
+| status | string | Comma-separated `OPEN`, `CLOSED`, `ON_HOLD` | - | Invalid values are ignored |
+| department | string | Comma-separated values | - | Trimmed per item |
+| pipelineHealth | string | Comma-separated `AHEAD`, `ON_TRACK`, `BEHIND` | - | Invalid values are ignored |
+| critical | string | Must be `true` to filter | - | Any other value ignored |
+| search | string | Max 200 chars | - | Applied to title contains (case-insensitive) |
+| includeCount | boolean | `true` | `false` | Includes active candidate counts |
+
+**POST `/api/jobs` (body)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| title | string | Yes | Trimmed, 3-200 chars | Required |
+| department | string | Yes | Trimmed, 1-100 chars | Required |
+| description | string | Yes | Trimmed, 10-10000 chars | Required |
+| location | string | No | Trimmed, max 200 chars | Empty becomes `null` |
+| hiringManager | string | No | Trimmed, max 100 chars | Empty becomes `null` |
+| recruiterOwner | string | No | Trimmed, max 100 chars | Empty becomes `null` |
+| status | enum | No | `OPEN`, `CLOSED`, `ON_HOLD` | Default `OPEN` |
+| priority | enum | No | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | Default `MEDIUM` |
+| pipelineHealth | enum | Cond. | `AHEAD`, `ON_TRACK`, `BEHIND` | Required when status is `OPEN` |
+| isCritical | boolean | No | - | Default `false` |
+| openedAt | ISO date | No | Must be valid date | Default `now()` |
+| targetFillDate | ISO date | No | Must be valid date, must be >= openedAt | Default `null` |
+
+**PATCH `/api/jobs/:id` (body + route param)**
+
+Route param `:id` must be a valid UUID.
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| title | string | No | Trimmed, 3-200 chars | Cannot be empty |
+| department | string | No | Trimmed, 1-100 chars | Cannot be empty |
+| description | string | No | Trimmed, 10-10000 chars | Cannot be empty |
+| location | string | No | Trimmed, max 200 chars | `null` clears |
+| hiringManager | string | No | Trimmed, max 100 chars | `null` clears |
+| recruiterOwner | string | No | Trimmed, max 100 chars | `null` clears |
+| status | enum | No | `OPEN`, `CLOSED`, `ON_HOLD` | - |
+| priority | enum | No | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | - |
+| pipelineHealth | enum | No | `AHEAD`, `ON_TRACK`, `BEHIND` | Required when status is `OPEN` |
+| isCritical | boolean | No | - | - |
+| openedAt | ISO date | No | Valid date or `null` | `null` clears |
+| targetFillDate | ISO date | No | Valid date or `null`, must be >= openedAt | `null` clears |
+| closedAt | ISO date | No | Valid date or `null` | Allowed only when status is `CLOSED` |
+
+Additional PATCH rules:
+
+1. `targetFillDate` cannot be earlier than `openedAt`.
+2. `pipelineHealth` must be set when status is `OPEN`.
+3. `closedAt` must be non-null when status is `CLOSED`; otherwise it must be null.
+4. At least one valid field must be provided; otherwise 400 is returned.
+
+### Candidates
+
+**GET `/api/candidates` (query parameters)**
+
+| Param | Type | Constraints | Default | Notes |
+| --- | --- | --- | --- | --- |
+| page | number | Integer ≥ 1 | 1 | Invalid values return 400 |
+| pageSize | number | Integer 1-100 | 20 | Invalid values return 400 |
+| sort | string | `name`, `email`, `updatedAt` | `name` | Invalid values return 400 |
+| order | string | `asc`, `desc` | `asc` | Invalid values return 400 |
+| search | string | Max 200 chars | - | Matches first name, last name, email |
+| includeJobCount | boolean | `true` | `false` | Adds applications count |
+
+**POST `/api/candidates` (body)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| firstName | string | Yes | Trimmed, 1-100 chars | Required |
+| lastName | string | Yes | Trimmed, 1-100 chars | Required |
+| email | string | No | Max 254 chars, RFC-style email validation | Empty becomes `null` |
+| phone | string | No | Trimmed | Empty becomes `null` |
+| linkedinUrl | string | No | Valid URL; hostname `linkedin.com` or `*.linkedin.com` | Empty becomes `null` |
+| currentCompany | string | No | Trimmed | Empty becomes `null` |
+| location | string | No | Trimmed | Empty becomes `null` |
+| source | enum | No | `REFERRAL`, `LINKEDIN`, `CAREERS_PAGE`, `AGENCY`, `OTHER` | - |
+| resumeKey | string | No | Must match `resumes/{uuid}.{ext}` | Must be paired with resumeName |
+| resumeName | string | No | Required if resumeKey provided | Must be paired with resumeKey |
+| notes | string | No | Trimmed, max 10000 chars | Empty becomes `null` |
+| jobId | UUID | No | Must reference existing job | If provided, creates an application |
+
+**PATCH `/api/candidates/:id` (body + route param)**
+
+Route param `:id` must be a valid UUID.
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| firstName | string | No | Trimmed, 1-100 chars | Cannot be empty |
+| lastName | string | No | Trimmed, 1-100 chars | Cannot be empty |
+| email | string | No | Max 254 chars, RFC-style email validation | `null` clears |
+| phone | string | No | Trimmed | `null` clears |
+| linkedinUrl | string | No | Valid URL; hostname `linkedin.com` or `*.linkedin.com` | `null` clears |
+| currentCompany | string | No | Trimmed | `null` clears |
+| location | string | No | Trimmed | `null` clears |
+| source | enum | No | `REFERRAL`, `LINKEDIN`, `CAREERS_PAGE`, `AGENCY`, `OTHER` | `null` clears |
+| resumeKey | string | No | Must match `resumes/{uuid}.{ext}` | Must be paired with resumeName |
+| resumeName | string | No | Required if resumeKey provided | Must be paired with resumeKey |
+| notes | string | No | Trimmed, max 10000 chars | `null` clears |
+
+Additional PATCH rules:
+
+1. `resumeKey` and `resumeName` must be provided together (including when clearing).
+2. At least one valid field must be provided; otherwise 400 is returned.
+
+### Applications
+
+**POST `/api/applications` (body)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| jobId | UUID | Yes | Valid UUID | Must reference existing job |
+| candidateId | UUID | Yes | Valid UUID | Must reference existing candidate |
+| stage | enum | No | `NEW`, `SCREENING`, `INTERVIEWING`, `FINAL_ROUND`, `OFFER`, `HIRED`, `REJECTED`, `WITHDRAWN` | Default `NEW` |
+| recruiterOwner | string | No | Trimmed, max 100 chars | Empty becomes `null` |
+| interviewNotes | string | No | Trimmed, max 50000 chars | Empty becomes `null` |
+
+**PATCH `/api/applications/:id` (body + route param)**
+
+Route param `:id` must be a valid UUID.
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| stage | enum | No | `NEW`, `SCREENING`, `INTERVIEWING`, `FINAL_ROUND`, `OFFER`, `HIRED`, `REJECTED`, `WITHDRAWN` | Updates `stageUpdatedAt` when changed |
+| recruiterOwner | string | No | Trimmed, max 100 chars | `null` clears |
+| interviewNotes | string | No | Trimmed, max 50000 chars | `null` clears |
+
+Additional PATCH rule: at least one valid field must be provided; otherwise 400 is returned.
+
+### Resume Uploads
+
+**POST `/api/upload/resume` (body)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| filename | string | Yes | Must include extension: `pdf`, `doc`, `docx`, `txt`, `rtf` | - |
+| contentType | string | No | Must match extension if provided (unless `application/octet-stream`) | - |
+| sizeBytes | number | Yes | Integer > 0 and ≤ 10MB | - |
+
+**GET `/api/upload/resume/:key` (route param)**
+
+Route param `:key` must match `resumes/{uuid}.{ext}` where ext is `pdf`, `doc`, `docx`, `txt`, `rtf`.
 
 ## Repository Structure
 
