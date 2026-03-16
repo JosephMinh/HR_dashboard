@@ -49,3 +49,17 @@ export {
   type TopJob,
   type ActivityItem,
 } from './use-dashboard'
+
+// Users (admin)
+export {
+  useUsersQuery,
+  useCreateUserMutation,
+  useUpdateUserMutation,
+  useResetPasswordMutation,
+  type User,
+  type UsersResponse,
+  type CreateUserInput,
+  type CreateUserResponse,
+  type UpdateUserInput,
+  type ResetPasswordResponse,
+} from './use-users'

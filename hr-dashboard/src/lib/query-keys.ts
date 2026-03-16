@@ -36,6 +36,13 @@ export interface ApplicationsFilters {
   stage?: string
 }
 
+export interface UsersFilters {
+  search?: string
+  active?: string
+  page?: number
+  limit?: number
+}
+
 export interface DashboardFilters {
   timeRange?: string
 }
@@ -70,6 +77,9 @@ export const queryCachePolicy: {
     byJob: CachePolicy
     byCandidate: CachePolicy
   }
+  users: {
+    list: CachePolicy
+  }
 } = {
   jobs: {
     list: { staleTime: 20_000, gcTime: 5 * 60_000, maxRetries: 2 },
@@ -87,6 +97,9 @@ export const queryCachePolicy: {
     detail: { staleTime: 30_000, gcTime: 10 * 60_000, maxRetries: 1 },
     byJob: { staleTime: 10_000, gcTime: 5 * 60_000, maxRetries: 1 },
     byCandidate: { staleTime: 10_000, gcTime: 5 * 60_000, maxRetries: 1 },
+  },
+  users: {
+    list: { staleTime: 15_000, gcTime: 5 * 60_000, maxRetries: 1 },
   },
 }
 
@@ -154,6 +167,10 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
     lists: () => [...queryKeys.users.all, 'list'] as const,
+    list: (filters?: UsersFilters) =>
+      filters
+        ? ([...queryKeys.users.lists(), filters] as const)
+        : queryKeys.users.lists(),
     detail: (id: string) => [...queryKeys.users.all, 'detail', id] as const,
     current: () => [...queryKeys.users.all, 'current'] as const,
   },

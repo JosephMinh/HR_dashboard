@@ -56,6 +56,23 @@ This repository contains the production application code, API layer, database sc
 - Hardened HTTP security headers with a route-wide CSP, frame protection, MIME sniffing protection, referrer controls, and browser feature restrictions
 - Signed object URLs for controlled resume upload/download access
 - Defensive validation for file type, file size, and storage keys
+- Admin-managed user provisioning with temporary password enforcement
+- Password policy: minimum 12 characters, uppercase, lowercase, number, and symbol required
+- Emails normalized to lowercase on creation and login
+
+### User Management & Password Lifecycle
+
+Users are provisioned by administrators — there is no self-registration.
+
+1. An admin creates a user via `/admin/users`, which generates a temporary password.
+2. The temporary password is displayed once and must be shared securely.
+3. On first login, the user is gated to `/settings/password` and must change their password before accessing any other page.
+4. After changing their password, the user can navigate freely.
+5. Admins can reset any user's password, which re-enables the forced-change gate.
+
+**Password policy:** Minimum 12 characters with at least one uppercase letter, one lowercase letter, one number, and one symbol.
+
+**Known limitation:** Deactivating a user does not invalidate their active JWT session. Sessions expire naturally after 4 hours. Admins should be aware that deactivated users may retain access until their session expires.
 
 ### Security Headers
 
@@ -124,6 +141,7 @@ The app exposes route handlers under `src/app/api`, including:
 - `jobs`
 - `candidates`
 - `applications`
+- `users` (admin CRUD, self-service profile & password)
 - `dashboard/stats`
 - `upload/resume`
 - `auth`
@@ -292,6 +310,70 @@ Additional PATCH rule: at least one valid field must be provided; otherwise 400 
 - Route param `:id` must be a valid UUID.
 - Returns 404 when the application does not exist and 403 for `VIEWER`.
 
+### Users (Admin)
+
+**GET `/api/users` (query parameters)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| page | number | No | Integer ≥ 1 | Default `1` |
+| limit | number | No | Integer 1–100 | Default `20` |
+| search | string | No | Trimmed, max 100 chars | Searches name and email |
+| active | `true`/`false` | No | - | Filters by active state |
+
+**POST `/api/users` (body)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| name | string | Yes | Trimmed, 1–100 chars | - |
+| email | string | Yes | Valid email, lowercased, max 254 chars | Must be unique |
+| role | enum | Yes | `ADMIN`, `RECRUITER`, `VIEWER` | - |
+
+- Creates user with a generated temporary password (`mustChangePassword: true`).
+- Returns the temp password in the response (one-time display).
+- Requires `ADMIN` role; returns 403 otherwise.
+
+**PATCH `/api/users/:id` (body + route param)**
+
+Route param `:id` must be a valid UUID.
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| name | string | No | Trimmed, 1–100 chars | - |
+| email | string | No | Valid email, lowercased, max 254 chars | Must be unique |
+| role | enum | No | `ADMIN`, `RECRUITER`, `VIEWER` | Cannot change own role |
+| active | boolean | No | - | Cannot deactivate self or last admin |
+
+- Requires `ADMIN` role; returns 403 otherwise.
+- At least one valid field must be provided; otherwise 400.
+
+**POST `/api/users/:id/reset-password` (route param)**
+
+- Route param `:id` must be a valid UUID.
+- Requires `ADMIN` role; returns 403 otherwise.
+- Generates a new temporary password and sets `mustChangePassword: true`.
+- Rate limited.
+
+### Users (Self-Service)
+
+**PATCH `/api/users/me` (body)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| name | string | No | Trimmed, 1–100 chars | At least one field required |
+
+- Returns 403 if the user has `mustChangePassword: true`.
+
+**POST `/api/users/me/password` (body)**
+
+| Field | Type | Required | Constraints | Notes |
+| --- | --- | --- | --- | --- |
+| currentPassword | string | Yes | - | Must match stored hash |
+| newPassword | string | Yes | Min 12 chars, uppercase, lowercase, number, symbol | Must differ from current |
+
+- Clears `mustChangePassword` on success.
+- Rate limited.
+
 ### Resume Uploads
 
 **POST `/api/upload/resume` (body)**
@@ -371,6 +453,58 @@ The system is designed around three roles with distinct responsibilities. Permis
 | Move application stages | ✅ | ✅ | ❌ |
 | View dashboards and reports | ✅ | ✅ | ✅ |
 | View audit log entries | ✅ | ✅ | ✅ |
+
+## User Management & Password Lifecycle
+
+Admins manage the full user lifecycle from `/admin/users`:
+
+1. **Create**: Admin creates a user with name, email, and role. A temporary password is generated and shown exactly once.
+2. **Login**: User logs in with email and temporary password.
+3. **Forced change**: Users with `mustChangePassword=true` are redirected to `/settings/password` and cannot access other pages until they set a new password.
+4. **Self-service**: Users can update their name at `/settings/profile` and change their password at `/settings/password`.
+5. **Reset**: Admin can reset any user's password, generating a new temporary password and re-enabling the forced-change gate.
+6. **Deactivation**: Admin can deactivate a user (soft-delete preserving audit trail).
+
+### Password Policy
+
+All passwords must meet these requirements:
+
+- Minimum 12 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one symbol
+
+### Email Normalization
+
+Emails are normalized to lowercase on user creation and login to prevent duplicate accounts from case variation.
+
+### Known Limitation
+
+Deactivating a user does not invalidate their active JWT session (up to 4-hour TTL). Admins should be aware that deactivated users may retain access until their session expires. This is accepted for v1.
+
+### Environment Variables for Seeding
+
+The seed script creates a single admin account from environment variables:
+
+| Variable | Description |
+| --- | --- |
+| `ADMIN_NAME` | Admin display name (1-100 chars) |
+| `ADMIN_EMAIL` | Admin email (must be valid) |
+| `ADMIN_PASSWORD` | Admin password (must meet policy) |
+
+### User Management API
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/users` | GET | List users (pagination, search, active filter) |
+| `/api/users` | POST | Create user with temp password |
+| `/api/users/:id` | PATCH | Update user name, role, or active status |
+| `/api/users/:id/reset-password` | POST | Reset password with new temp password |
+| `/api/users/me` | PATCH | Self-service name update |
+| `/api/users/me/password` | POST | Self-service password change |
+
+All user management endpoints require `ADMIN` role (403 for others). Self-service endpoints require authentication only.
 
 ## Data Flow Overview
 
