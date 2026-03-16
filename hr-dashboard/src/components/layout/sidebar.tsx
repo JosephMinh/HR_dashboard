@@ -2,9 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { cn } from '@/lib/utils'
-import { Home, Briefcase, Users, X } from 'lucide-react'
+import { Home, Briefcase, Users, Shield, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { canManageUsers } from '@/lib/permissions'
+import type { Role } from '@/types/auth'
 
 interface SidebarProps {
   isOpen: boolean
@@ -17,8 +20,15 @@ const navItems = [
   { href: '/candidates', label: 'Candidates', icon: Users },
 ]
 
+const adminItems = [
+  { href: '/admin/users', label: 'Users', icon: Shield },
+]
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const { data: session } = useSession()
+  const userRole = session?.user?.role as Role | undefined
+  const showAdmin = canManageUsers(userRole)
 
   return (
     <>
@@ -63,9 +73,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             Workspace
           </div>
           {navItems.map((item) => {
-            const isActive = pathname === item.href || 
+            const isActive = pathname === item.href ||
               (item.href !== '/' && pathname.startsWith(item.href))
-            
+
             return (
               <Link
                 key={item.href}
@@ -90,6 +100,39 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </Link>
             )
           })}
+          {showAdmin ? (
+            <>
+              <div className="mt-4 px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Admin
+              </div>
+              {adminItems.map((item) => {
+                const isActive = pathname.startsWith(item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onClose}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={cn(
+                      'relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                      isActive
+                        ? 'bg-sidebar-accent text-foreground shadow-premium-xs ring-1 ring-sidebar-border/60'
+                        : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground'
+                    )}
+                  >
+                    {isActive ? (
+                      <span
+                        className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-primary"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <item.icon className="h-5 w-5" />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </>
+          ) : null}
         </nav>
         <div className="mt-auto px-4 pb-4 text-xs text-muted-foreground">
           Premium Recruiting Workspace

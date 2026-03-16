@@ -1,8 +1,8 @@
 'use client'
 
 import { signOut } from 'next-auth/react'
-import { usePathname } from 'next/navigation'
-import { Menu, LogOut } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { Menu, LogOut, User, KeyRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 
 interface TopBarProps {
@@ -63,6 +64,18 @@ function getRouteMeta(pathname: string): RouteMeta {
     return { title: 'Candidate Profile', subtitle: 'Recruiter dossier' }
   }
 
+  if (pathname === '/settings/profile') {
+    return { title: 'Profile', subtitle: 'Your account details' }
+  }
+
+  if (pathname === '/settings/password') {
+    return { title: 'Change Password', subtitle: 'Update your credentials' }
+  }
+
+  if (pathname === '/admin/users') {
+    return { title: 'User Management', subtitle: 'Manage team access' }
+  }
+
   return { title: 'Workspace' }
 }
 
@@ -74,6 +87,7 @@ const roleColors = {
 
 export function TopBar({ user, onMenuClick }: TopBarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const routeMeta = getRouteMeta(pathname)
 
   const initials = user?.name
@@ -132,6 +146,16 @@ export function TopBar({ user, onMenuClick }: TopBarProps) {
             <DropdownMenuItem className="text-muted-foreground">
               {user.email}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push('/settings/profile')}>
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/settings/password')}>
+              <KeyRound className="mr-2 h-4 w-4" />
+              Change Password
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => signOut({ callbackUrl: '/login' })}
               className="text-destructive"

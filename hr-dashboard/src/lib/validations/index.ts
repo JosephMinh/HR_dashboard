@@ -17,6 +17,15 @@
 // Re-export validation functions
 export { isValidUUID, isValidEmail } from './functions'
 
+// Re-export password policy
+export {
+  PasswordSchema,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_REQUIREMENTS,
+  getUnmetRequirements,
+  generateTempPassword,
+} from './password'
+
 // Re-export schemas and enums
 export {
   // Enums

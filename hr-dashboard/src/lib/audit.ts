@@ -20,6 +20,8 @@ export type AuditAction =
   | 'USER_CREATED'
   | 'USER_UPDATED'
   | 'USER_DEACTIVATED'
+  | 'USER_PASSWORD_CHANGED'
+  | 'USER_PASSWORD_RESET'
 
 // Entity types
 export type EntityType = 'Job' | 'Candidate' | 'Application' | 'User' | 'Resume'

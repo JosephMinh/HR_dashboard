@@ -18,7 +18,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null
         }
 
-        const email = credentials.email as string
+        const email = (credentials.email as string).toLowerCase().trim()
         const password = credentials.password as string
 
         const user = await prisma.user.findUnique({
@@ -40,6 +40,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           name: user.name,
           role: user.role,
+          mustChangePassword: user.mustChangePassword,
         }
       },
     }),
