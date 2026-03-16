@@ -2,7 +2,7 @@
  * Integration Tests: Admin User Management API
  *
  * Covers: GET /api/users, POST /api/users, PATCH /api/users/:id,
- *         POST /api/users/:id/reset-password
+ *         POST /api/users/:id/reset-password, POST /api/users/:id/resend-invite
  *
  * Bead: hr-1o3f.2
  */
@@ -592,6 +592,304 @@ describe("Integration: Admin User Management API", () => {
         where: { entityId: user.id, action: "USER_PASSWORD_RESET" },
       })
       expect(log).not.toBeNull()
+    })
+  })
+
+  // =========================================================================
+  // POST /api/users/:id/resend-invite
+  // =========================================================================
+
+  describe("POST /api/users/:id/resend-invite", () => {
+    it("returns 401 when unauthenticated", async () => {
+      authMock.mockResolvedValue(null)
+      const user = await factories.createUser({ email: "target@test.com" })
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(401)
+    })
+
+    it("returns 403 for non-admin", async () => {
+      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      const user = await factories.createUser({ email: "target@test.com" })
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(403)
+    })
+
+    it("returns 400 for invalid UUID", async () => {
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/not-a-uuid/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: "not-a-uuid" }) },
+      )
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data.error).toContain("Invalid user ID")
+    })
+
+    it("returns 404 for non-existent user", async () => {
+      const fakeId = "a0000000-0000-4000-a000-000000000000"
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + fakeId + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: fakeId }) },
+      )
+      expect(response.status).toBe(404)
+    })
+
+    it("returns 400 for inactive user", async () => {
+      const prisma = getTestPrisma()
+      const user = await factories.createUser({ email: "inactive@test.com" })
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { active: false, mustChangePassword: true },
+      })
+
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data.error).toContain("inactive")
+    })
+
+    it("returns 409 when user has already completed onboarding", async () => {
+      const prisma = getTestPrisma()
+      const user = await factories.createUser({ email: "onboarded@test.com" })
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { mustChangePassword: false },
+      })
+
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(409)
+      const data = await response.json()
+      expect(data.error).toContain("already completed onboarding")
+    })
+
+    it("resends invite for pending user and creates audit log", async () => {
+      const prisma = getTestPrisma()
+      const user = await factories.createUser({ email: "pending@test.com" })
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { mustChangePassword: true },
+      })
+
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.success).toBe(true)
+
+      // Verify audit log
+      const log = await prisma.auditLog.findFirst({
+        where: { entityId: user.id, action: "USER_INVITE_RESENT" },
+      })
+      expect(log).not.toBeNull()
+      expect(log?.entityType).toBe("User")
+    })
+  })
+
+  // =========================================================================
+  // DELETE /api/users/:id
+  // =========================================================================
+
+  describe("DELETE /api/users/:id", () => {
+    it("returns 401 when unauthenticated", async () => {
+      authMock.mockResolvedValue(null)
+      const user = await factories.createUser({ email: "target@test.com" })
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + user.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(401)
+    })
+
+    it("returns 403 for non-admin", async () => {
+      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      const user = await factories.createUser({ email: "target@test.com" })
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + user.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(403)
+    })
+
+    it("returns 403 when trying to delete yourself", async () => {
+      const actor = await factories.createUser({ role: "ADMIN", email: "self@test.com" })
+      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + actor.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: actor.id }) },
+      )
+      expect(response.status).toBe(403)
+      const data = await response.json()
+      expect(data.error).toContain("Cannot delete yourself")
+    })
+
+    it("returns 400 for invalid UUID", async () => {
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/not-a-uuid", {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: "not-a-uuid" }) },
+      )
+      expect(response.status).toBe(400)
+    })
+
+    it("returns 404 for non-existent user", async () => {
+      const fakeId = "a0000000-0000-4000-a000-000000000000"
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + fakeId, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: fakeId }) },
+      )
+      expect(response.status).toBe(404)
+    })
+
+    it("returns 409 when deleting the last active admin", async () => {
+      const prisma = getTestPrisma()
+      // Create actor first, then deactivate all non-target admins
+      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
+      const admin = await factories.createUser({ role: "ADMIN", email: "only-admin@test.com" })
+      // Deactivate all admins except the target so they are the last active admin
+      await prisma.user.updateMany({
+        where: { role: "ADMIN", NOT: { id: admin.id } },
+        data: { active: false },
+      })
+      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + admin.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: admin.id }) },
+      )
+      expect(response.status).toBe(409)
+      const data = await response.json()
+      expect(data.error).toContain("last active admin")
+    })
+
+    it("deletes user successfully and creates audit log", async () => {
+      const prisma = getTestPrisma()
+      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
+      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+      const target = await factories.createUser({ email: "target@test.com" })
+
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + target.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: target.id }) },
+      )
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data).toEqual({ success: true })
+
+      // Verify user is deleted
+      const deleted = await prisma.user.findUnique({ where: { id: target.id } })
+      expect(deleted).toBeNull()
+
+      // Verify audit log
+      const log = await prisma.auditLog.findFirst({
+        where: { entityId: target.id, action: "USER_DELETED" },
+      })
+      expect(log).not.toBeNull()
+      expect(log?.entityType).toBe("User")
+    })
+
+    it("allows deleting an inactive admin when other active admins exist", async () => {
+      const prisma = getTestPrisma()
+      const actor = await factories.createUser({ role: "ADMIN", email: "active-admin@test.com" })
+      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+      const inactiveAdmin = await factories.createUser({ role: "ADMIN", email: "inactive@test.com" })
+      await prisma.user.update({
+        where: { id: inactiveAdmin.id },
+        data: { active: false },
+      })
+
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + inactiveAdmin.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: inactiveAdmin.id }) },
+      )
+      expect(response.status).toBe(200)
+    })
+
+    it("preserves audit logs after user deletion (SetNull)", async () => {
+      const prisma = getTestPrisma()
+      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
+      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+      const target = await factories.createUser({ email: "target@test.com" })
+
+      // Create an audit log referencing the target user
+      await prisma.auditLog.create({
+        data: {
+          userId: target.id,
+          action: "USER_UPDATED",
+          entityType: "User",
+          entityId: target.id,
+        },
+      })
+
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      await DELETE(
+        new Request("http://localhost/api/users/" + target.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: target.id }) },
+      )
+
+      // Audit logs should still exist with null userId
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: target.id },
+      })
+      expect(logs.length).toBeGreaterThanOrEqual(1)
     })
   })
 })

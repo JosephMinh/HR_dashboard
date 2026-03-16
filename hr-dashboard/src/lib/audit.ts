@@ -22,6 +22,8 @@ export type AuditAction =
   | 'USER_DEACTIVATED'
   | 'USER_PASSWORD_CHANGED'
   | 'USER_PASSWORD_RESET'
+  | 'USER_INVITE_RESENT'
+  | 'USER_DELETED'
 
 // Entity types
 export type EntityType = 'Job' | 'Candidate' | 'Application' | 'User' | 'Resume'

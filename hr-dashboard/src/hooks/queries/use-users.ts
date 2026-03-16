@@ -54,6 +54,10 @@ export interface ResetPasswordResponse {
   success: true
 }
 
+export interface ResendInviteResponse {
+  success: true
+}
+
 /**
  * Fetch users list with filters and pagination (admin only)
  */
@@ -117,6 +121,22 @@ export function useResetPasswordMutation() {
   return useMutation<ResetPasswordResponse, Error, string>({
     mutationFn: async (userId) => {
       return api.post<ResetPasswordResponse>(`/api/users/${userId}/reset-password`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.lists() })
+    },
+  })
+}
+
+/**
+ * Resend onboarding invite email (admin only)
+ */
+export function useResendInviteMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation<ResendInviteResponse, Error, string>({
+    mutationFn: async (userId) => {
+      return api.post<ResendInviteResponse>(`/api/users/${userId}/resend-invite`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.lists() })

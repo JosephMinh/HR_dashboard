@@ -17,7 +17,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { canManageUsers } from '@/lib/permissions'
-import { Plus, RotateCcw, Copy, Check, Search, Mail, AlertTriangle } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { showSuccessToast, showErrorToast } from '@/lib/feedback'
+import { Plus, RotateCcw, Copy, Check, Search, Mail, AlertTriangle, Trash2 } from 'lucide-react'
 
 interface User {
   id: string
@@ -408,6 +410,112 @@ function ResetPasswordButton({
   )
 }
 
+function ResendInviteButton({
+  userId,
+  userName,
+  onResult,
+}: {
+  userId: string
+  userName: string
+  onResult: (result: { success: boolean; error?: string }) => void
+}) {
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleResend() {
+    if (!confirm(`Resend onboarding invite to ${userName}?`)) {
+      return
+    }
+
+    setSending(true)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/users/${userId}/resend-invite`, {
+        method: 'POST',
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        const errMsg = data.error || 'Failed to resend invite'
+        setError(errMsg)
+        onResult({ success: false, error: errMsg })
+        return
+      }
+
+      onResult({ success: true })
+    } catch {
+      setError('An unexpected error occurred')
+      onResult({ success: false, error: 'An unexpected error occurred' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={handleResend}
+        disabled={sending}
+        className="text-muted-foreground"
+      >
+        <Mail className="mr-1 h-3 w-3" />
+        {sending ? 'Sending...' : 'Resend Invite'}
+      </Button>
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+function DeleteUserButton({ user, onDeleted }: { user: User; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false)
+
+  async function handleDelete() {
+    try {
+      const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        showErrorToast('delete user', data.error || 'Failed to delete user')
+        setOpen(false)
+        return
+      }
+      setOpen(false)
+      showSuccessToast('deleted', 'user', user.name)
+      onDeleted()
+    } catch {
+      showErrorToast('delete user', 'An unexpected error occurred')
+      setOpen(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="text-muted-foreground hover:text-destructive"
+        aria-label={`Delete user ${user.name}`}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+      <ConfirmDialog
+        open={open}
+        variant="destructive"
+        title="Delete user?"
+        message={`Permanently delete ${user.name} (${user.email})? This action cannot be undone. Their audit log entries will be preserved.`}
+        confirmLabel="Delete"
+        cancelLabel="Keep user"
+        onConfirm={handleDelete}
+        onCancel={() => setOpen(false)}
+      />
+    </>
+  )
+}
+
 function roleBadgeVariant(role: string) {
   switch (role) {
     case 'ADMIN': return 'default'
@@ -487,6 +595,14 @@ export default function AdminUsersPage() {
       setStatusBanner({ type: 'success', message: 'Password reset email sent successfully.' })
     } else {
       setStatusBanner({ type: 'warning', message: result.error || 'Password reset email could not be sent. The existing password remains unchanged.' })
+    }
+  }
+
+  function handleResendInvite(result: { success: boolean; error?: string }) {
+    if (result.success) {
+      setStatusBanner({ type: 'success', message: 'Onboarding invite resent successfully.' })
+    } else {
+      setStatusBanner({ type: 'warning', message: result.error || 'Invite email could not be sent. Please try again later.' })
     }
   }
 
@@ -601,6 +717,16 @@ export default function AdminUsersPage() {
                                 userName={user.name}
                                 onReset={handleResetPassword}
                               />
+                            )}
+                            {user.mustChangePassword && user.active && (
+                              <ResendInviteButton
+                                userId={user.id}
+                                userName={user.name}
+                                onResult={handleResendInvite}
+                              />
+                            )}
+                            {user.id !== session.user.id && (
+                              <DeleteUserButton user={user} onDeleted={fetchUsers} />
                             )}
                           </div>
                         </td>
