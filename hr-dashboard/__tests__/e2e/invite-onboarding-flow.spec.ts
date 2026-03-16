@@ -1,4 +1,5 @@
 import type { APIRequestContext } from "@playwright/test"
+import { hash } from "bcryptjs"
 
 import { test, expect } from "./fixtures"
 
