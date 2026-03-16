@@ -1,11 +1,16 @@
+import crypto from 'node:crypto'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { hash } from 'bcryptjs'
 
 import { auth } from '@/lib/auth'
 import { getClientIp, logAuditCreate } from '@/lib/audit'
+import { sendEmail } from '@/lib/email'
+import { buildInviteEmail } from '@/lib/email-templates'
+import { buildSetPasswordUrl, issueSetPasswordToken } from '@/lib/password-setup-tokens'
 import { prisma } from '@/lib/prisma'
 import { canManageUsers } from '@/lib/permissions'
-import { isValidEmail, generateTempPassword } from '@/lib/validations'
+import { isValidEmail } from '@/lib/validations'
 import { UserRole } from '@/generated/prisma/client'
 import type { Prisma } from '@/generated/prisma/client'
 
@@ -105,10 +110,10 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/users — create a new user with a temp password.
+ * POST /api/users — create a new user and send an onboarding invite email.
  * Requires MANAGE_USERS permission.
  * Body: { name, email, role }
- * Returns created user + tempPassword (returned exactly once).
+ * Returns created user + invite delivery outcome.
  */
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -164,29 +169,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A user with this email already exists' }, { status: 409 })
   }
 
-  // Generate temp password and hash it
-  const tempPassword = generateTempPassword()
-  const passwordHash = await hash(tempPassword, 10)
+  // Generate an unusable placeholder hash — the user sets their real
+  // password via the onboarding token link sent in the invite email.
+  const placeholderHash = await hash(crypto.randomBytes(32).toString('hex'), 10)
 
-  const user = await prisma.user.create({
-    data: {
-      name: trimmedName,
-      email: normalizedEmail,
-      passwordHash,
-      role: role as UserRole,
-      active: true,
-      mustChangePassword: true,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      active: true,
-      mustChangePassword: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+  const { user, passwordSetup } = await prisma.$transaction(async (tx) => {
+    const createdUser = await tx.user.create({
+      data: {
+        name: trimmedName,
+        email: normalizedEmail,
+        passwordHash: placeholderHash,
+        role: role as UserRole,
+        active: true,
+        mustChangePassword: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        mustChangePassword: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    const issuedToken = await issueSetPasswordToken({
+      userId: createdUser.id,
+      tx,
+    })
+
+    return {
+      user: createdUser,
+      passwordSetup: issuedToken,
+    }
   })
 
   await logAuditCreate({
@@ -198,5 +215,27 @@ export async function POST(request: NextRequest) {
     ipAddress: getClientIp(request),
   })
 
-  return NextResponse.json({ ...user, tempPassword }, { status: 201 })
+  // Send the onboarding invite email
+  const setupUrl = buildSetPasswordUrl(passwordSetup.token)
+  const invitePayload = buildInviteEmail({
+    recipientName: trimmedName,
+    setupUrl,
+    senderName: session.user.name ?? undefined,
+  })
+
+  const emailResult = await sendEmail({
+    to: normalizedEmail,
+    subject: invitePayload.subject,
+    html: invitePayload.html,
+    text: invitePayload.text,
+  })
+
+  return NextResponse.json({
+    ...user,
+    invite: {
+      status: emailResult.success ? 'sent' as const : 'failed' as const,
+      ...(emailResult.error ? { error: emailResult.error } : {}),
+      setupUrl,
+    },
+  }, { status: 201 })
 }

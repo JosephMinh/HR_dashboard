@@ -63,11 +63,11 @@ describe('Email Service', () => {
 
       const outbox = getTestOutbox()
       expect(outbox).toHaveLength(1)
-      expect(outbox[0].to).toBe('user@example.com')
-      expect(outbox[0].subject).toBe('Welcome')
-      expect(outbox[0].html).toBe('<h1>Hello</h1>')
-      expect(outbox[0].text).toBe('Hello')
-      expect(outbox[0].sentAt).toBeInstanceOf(Date)
+      expect(outbox[0]!.to).toBe('user@example.com')
+      expect(outbox[0]!.subject).toBe('Welcome')
+      expect(outbox[0]!.html).toBe('<h1>Hello</h1>')
+      expect(outbox[0]!.text).toBe('Hello')
+      expect(outbox[0]!.sentAt).toBeInstanceOf(Date)
     })
 
     it('captures multiple emails', async () => {
@@ -75,7 +75,7 @@ describe('Email Service', () => {
       await sendEmail({ ...testPayload, to: 'other@example.com' })
 
       expect(getTestOutbox()).toHaveLength(2)
-      expect(getTestOutbox()[1].to).toBe('other@example.com')
+      expect(getTestOutbox()[1]!.to).toBe('other@example.com')
     })
 
     it('getLastTestEmail returns the most recent email', async () => {
@@ -198,7 +198,7 @@ describe('Email Service', () => {
       await sendEmail(testPayload)
 
       expect(consoleSpy).toHaveBeenCalledTimes(1)
-      const output = consoleSpy.mock.calls[0][0] as string
+      const output = consoleSpy.mock.calls[0]![0] as string
       expect(output).toContain('Email Preview')
       expect(output).toContain('user@example.com')
       expect(output).toContain('Welcome')

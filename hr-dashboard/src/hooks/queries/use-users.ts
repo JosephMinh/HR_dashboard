@@ -33,8 +33,14 @@ export interface CreateUserInput {
   role: string
 }
 
+export interface InviteDeliveryOutcome {
+  status: 'sent' | 'failed'
+  error?: string
+  setupUrl: string
+}
+
 export interface CreateUserResponse extends User {
-  tempPassword: string
+  invite: InviteDeliveryOutcome
 }
 
 export interface UpdateUserInput {
