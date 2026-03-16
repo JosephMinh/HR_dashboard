@@ -180,13 +180,13 @@ describe('Email Service', () => {
       vi.stubEnv('SENDER_EMAIL', '')
     })
 
-    it('returns success with dev-preview messageId', async () => {
+    it('returns failure with SMTP-not-configured error', async () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       const result = await sendEmail(testPayload)
 
-      expect(result.success).toBe(true)
-      expect(result.messageId).toMatch(/^dev-preview-/)
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('SMTP is not configured')
       expect(mockSendMail).not.toHaveBeenCalled()
 
       consoleSpy.mockRestore()
@@ -212,18 +212,18 @@ describe('Email Service', () => {
   // =========================================================================
 
   describe('config validation', () => {
-    it('throws when SMTP_HOST is missing in production send', async () => {
+    it('returns failure when SMTP_HOST is missing', async () => {
       vi.stubEnv('NODE_ENV', 'production')
       vi.stubEnv('VITEST', '')
       vi.stubEnv('SMTP_HOST', '')
       vi.stubEnv('SENDER_EMAIL', 'noreply@test.com')
 
       // isSmtpConfigured() returns false because host is missing,
-      // so it falls through to dev preview mode
+      // so it falls through to dev preview mode which reports failure
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
       const result = await sendEmail(testPayload)
-      expect(result.success).toBe(true)
-      expect(result.messageId).toMatch(/^dev-preview-/)
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('SMTP is not configured')
       consoleSpy.mockRestore()
     })
   })

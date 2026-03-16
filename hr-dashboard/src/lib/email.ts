@@ -175,10 +175,14 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
     return { success: true, messageId: `test-${Date.now()}-${testOutbox.length}` }
   }
 
-  // --- Dev mode without SMTP: log redacted preview ---
+  // --- Dev mode without SMTP: log preview and report failure ---
   if (!isSmtpConfigured()) {
     logDevPreview(payload)
-    return { success: true, messageId: `dev-preview-${Date.now()}` }
+    return {
+      success: false,
+      error:
+        'SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SENDER_EMAIL environment variables to enable email delivery.',
+    }
   }
 
   // --- Production: send via SMTP ---
