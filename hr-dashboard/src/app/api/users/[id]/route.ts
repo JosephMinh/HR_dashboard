@@ -93,7 +93,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Prevent last-admin demotion
-    if (existing.role === 'ADMIN' && role !== 'ADMIN') {
+    if (existing.role === 'ADMIN' && existing.active && role !== 'ADMIN') {
       const adminCount = await prisma.user.count({
         where: { role: 'ADMIN', active: true },
       })
@@ -118,7 +118,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
 
       // Prevent last-admin deactivation
-      if (existing.role === 'ADMIN') {
+      if (existing.role === 'ADMIN' && existing.active) {
         const adminCount = await prisma.user.count({
           where: { role: 'ADMIN', active: true },
         })
@@ -135,11 +135,46 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'No valid fields provided for update' }, { status: 400 })
   }
 
-  const updated = await prisma.user.update({
-    where: { id },
-    data,
-    select: USER_SELECT,
-  })
+  const needsAdminGuard =
+    (role !== undefined &&
+      existing.role === 'ADMIN' &&
+      existing.active &&
+      role !== 'ADMIN') ||
+    (active === false && existing.role === 'ADMIN' && existing.active)
+
+  let updated
+  if (needsAdminGuard) {
+    // Use a transaction to prevent TOCTOU race on last-admin checks.
+    // Without this, concurrent requests could both pass the admin count
+    // check and then both demote/deactivate different admins.
+    const result = await prisma.$transaction(async (tx) => {
+      const adminCount = await tx.user.count({
+        where: { role: 'ADMIN', active: true, NOT: { id } },
+      })
+      if (adminCount === 0) {
+        return { kind: 'last_admin' as const }
+      }
+      const u = await tx.user.update({
+        where: { id },
+        data,
+        select: USER_SELECT,
+      })
+      return { kind: 'ok' as const, user: u }
+    })
+    if (result.kind === 'last_admin') {
+      const msg = role !== undefined && role !== 'ADMIN'
+        ? 'Cannot demote the last admin'
+        : 'Cannot deactivate the last admin'
+      return NextResponse.json({ error: msg }, { status: 400 })
+    }
+    updated = result.user
+  } else {
+    updated = await prisma.user.update({
+      where: { id },
+      data,
+      select: USER_SELECT,
+    })
+  }
 
   // Determine audit action
   const isDeactivation = active === false && existing.active === true

@@ -91,25 +91,36 @@ export async function logAudit(params: AuditLogParams): Promise<void> {
  * @returns The client IP or null
  */
 export function getClientIp(request: Request): string | null {
-  // Try common proxy headers first
   const headers = request.headers
-  
-  // X-Forwarded-For may contain multiple IPs, take the first
+
+  // Prefer trusted proxy headers (set by infrastructure, not spoofable)
+  const cfConnectingIp = headers.get('cf-connecting-ip')
+  if (cfConnectingIp) return sanitizeIp(cfConnectingIp)
+
+  const vercelForwardedFor = headers.get('x-vercel-forwarded-for')
+  if (vercelForwardedFor) {
+    const firstIp = vercelForwardedFor.split(',')[0]?.trim()
+    if (firstIp) return sanitizeIp(firstIp)
+  }
+
+  const realIp = headers.get('x-real-ip')
+  if (realIp) return sanitizeIp(realIp)
+
+  // Fallback: x-forwarded-for (spoofable if not behind a proxy that rewrites it)
   const forwardedFor = headers.get('x-forwarded-for')
   if (forwardedFor) {
     const firstIp = forwardedFor.split(',')[0]?.trim()
-    if (firstIp) return firstIp
+    if (firstIp) return sanitizeIp(firstIp)
   }
 
-  // Try other common headers
-  const realIp = headers.get('x-real-ip')
-  if (realIp) return realIp
-
-  const cfConnectingIp = headers.get('cf-connecting-ip')
-  if (cfConnectingIp) return cfConnectingIp
-
-  // No IP found
   return null
+}
+
+/** Truncate and strip non-printable chars to prevent stored XSS and DB bloat */
+function sanitizeIp(raw: string): string {
+  // IP addresses are at most 45 chars (IPv6 mapped IPv4: "::ffff:192.168.1.1")
+  // eslint-disable-next-line no-control-regex
+  return raw.slice(0, 45).replace(/[^\x20-\x7E]/g, '')
 }
 
 /**

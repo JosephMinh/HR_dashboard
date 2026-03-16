@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { getClientIp, logAudit } from '@/lib/audit'
 import { sendEmail } from '@/lib/email'
 import { buildInviteEmail } from '@/lib/email-templates'
-import { buildSetPasswordUrl, issueSetPasswordToken } from '@/lib/password-setup-tokens'
+import { buildSetPasswordUrl, hashSetPasswordToken, issueSetPasswordToken } from '@/lib/password-setup-tokens'
 import { prisma } from '@/lib/prisma'
 import { canManageUsers } from '@/lib/permissions'
 import { isValidUUID } from '@/lib/validations'
@@ -12,6 +12,42 @@ import { enforceRouteRateLimit } from '@/lib/rate-limit'
 
 interface RouteParams {
   params: Promise<{ id: string }>
+}
+
+async function rollbackIssuedToken(params: {
+  userId: string
+  issuedToken: string
+  previousTokenIds: string[]
+}) {
+  const rollbackAt = new Date()
+
+  await prisma.$transaction(async (tx) => {
+    await tx.setPasswordToken.updateMany({
+      where: {
+        userId: params.userId,
+        tokenHash: hashSetPasswordToken(params.issuedToken),
+        usedAt: null,
+      },
+      data: {
+        usedAt: rollbackAt,
+      },
+    })
+
+    if (params.previousTokenIds.length === 0) {
+      return
+    }
+
+    await tx.setPasswordToken.updateMany({
+      where: {
+        id: { in: params.previousTokenIds },
+        userId: params.userId,
+        expiresAt: { gt: rollbackAt },
+      },
+      data: {
+        usedAt: null,
+      },
+    })
+  })
 }
 
 /**
@@ -63,8 +99,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'User has already completed onboarding' }, { status: 409 })
   }
 
-  // Issue a fresh token (invalidates any prior unused tokens)
-  const passwordSetup = await issueSetPasswordToken({ userId: id })
+  // Capture currently active tokens in the same transaction that issues the
+  // replacement so we can restore them if email delivery fails.
+  const { passwordSetup, previousTokenIds } = await prisma.$transaction(async (tx) => {
+    const previousTokens = await tx.setPasswordToken.findMany({
+      where: {
+        userId: id,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    const issuedToken = await issueSetPasswordToken({ userId: id, tx })
+
+    return {
+      passwordSetup: issuedToken,
+      previousTokenIds: previousTokens.map((token) => token.id),
+    }
+  })
 
   // Send the invite email
   const setupUrl = buildSetPasswordUrl(passwordSetup.token)
@@ -82,8 +137,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   })
 
   if (!emailResult.success) {
+    await rollbackIssuedToken({
+      userId: id,
+      issuedToken: passwordSetup.token,
+      previousTokenIds,
+    })
+    console.error(`[resend-invite] Email delivery failed for user ${id}:`, emailResult.error)
     return NextResponse.json(
-      { error: 'Invite email could not be sent. Please try again later.', emailError: emailResult.error },
+      { error: 'Invite email could not be sent. Please try again later.' },
       { status: 502 }
     )
   }

@@ -27,9 +27,12 @@ export const PASSWORD_REQUIREMENTS = [
 // Zod schema
 // ---------------------------------------------------------------------------
 
+export const PASSWORD_MAX_LENGTH = 128
+
 export const PasswordSchema = z
   .string()
   .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
+  .max(PASSWORD_MAX_LENGTH, `Password must be at most ${PASSWORD_MAX_LENGTH} characters`)
   .refine((pw) => /[A-Z]/.test(pw), { message: 'Password must contain at least one uppercase letter' })
   .refine((pw) => /[a-z]/.test(pw), { message: 'Password must contain at least one lowercase letter' })
   .refine((pw) => /\d/.test(pw), { message: 'Password must contain at least one number' })

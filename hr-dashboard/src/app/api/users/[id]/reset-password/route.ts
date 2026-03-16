@@ -7,7 +7,7 @@ import { auth } from '@/lib/auth'
 import { getClientIp, logAudit } from '@/lib/audit'
 import { sendEmail } from '@/lib/email'
 import { buildResetEmail } from '@/lib/email-templates'
-import { buildSetPasswordUrl, issueSetPasswordToken } from '@/lib/password-setup-tokens'
+import { buildSetPasswordUrl, hashSetPasswordToken, issueSetPasswordToken } from '@/lib/password-setup-tokens'
 import { prisma } from '@/lib/prisma'
 import { canManageUsers } from '@/lib/permissions'
 import { isValidUUID } from '@/lib/validations'
@@ -15,6 +15,42 @@ import { enforceRouteRateLimit } from '@/lib/rate-limit'
 
 interface RouteParams {
   params: Promise<{ id: string }>
+}
+
+async function rollbackIssuedToken(params: {
+  userId: string
+  issuedToken: string
+  previousTokenIds: string[]
+}) {
+  const rollbackAt = new Date()
+
+  await prisma.$transaction(async (tx) => {
+    await tx.setPasswordToken.updateMany({
+      where: {
+        userId: params.userId,
+        tokenHash: hashSetPasswordToken(params.issuedToken),
+        usedAt: null,
+      },
+      data: {
+        usedAt: rollbackAt,
+      },
+    })
+
+    if (params.previousTokenIds.length === 0) {
+      return
+    }
+
+    await tx.setPasswordToken.updateMany({
+      where: {
+        id: { in: params.previousTokenIds },
+        userId: params.userId,
+        expiresAt: { gt: rollbackAt },
+      },
+      data: {
+        usedAt: null,
+      },
+    })
+  })
 }
 
 /**
@@ -61,8 +97,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Cannot reset password for an inactive user' }, { status: 400 })
   }
 
-  // Issue a set-password token (does not modify the password yet)
-  const passwordSetup = await issueSetPasswordToken({ userId: id })
+  // Capture currently active tokens in the same transaction that issues the
+  // replacement so we can restore them if email delivery fails.
+  const { passwordSetup, previousTokenIds } = await prisma.$transaction(async (tx) => {
+    const previousTokens = await tx.setPasswordToken.findMany({
+      where: {
+        userId: id,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    const issuedToken = await issueSetPasswordToken({ userId: id, tx })
+
+    return {
+      passwordSetup: issuedToken,
+      previousTokenIds: previousTokens.map((token) => token.id),
+    }
+  })
 
   // Build and send the reset email
   const setupUrl = buildSetPasswordUrl(passwordSetup.token)
@@ -79,22 +134,36 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   })
 
   if (!emailResult.success) {
+    await rollbackIssuedToken({
+      userId: id,
+      issuedToken: passwordSetup.token,
+      previousTokenIds,
+    })
     // Email failed — leave existing credentials untouched
+    console.error(`[reset-password] Email delivery failed for user ${id}:`, emailResult.error)
     return NextResponse.json(
-      { error: 'Password reset email could not be sent. The existing password remains unchanged.', emailError: emailResult.error },
+      { error: 'Password reset email could not be sent. The existing password remains unchanged.' },
       { status: 502 }
     )
   }
 
-  // Email sent successfully — now invalidate the old password
+  // Email sent successfully — now invalidate the old password.
+  // Re-check active status to guard against concurrent deactivation.
   const placeholderHash = await hash(crypto.randomBytes(32).toString('hex'), 10)
-  await prisma.user.update({
-    where: { id },
+  const updateResult = await prisma.user.updateMany({
+    where: { id, active: true },
     data: {
       passwordHash: placeholderHash,
       mustChangePassword: true,
     },
   })
+
+  if (updateResult.count === 0) {
+    return NextResponse.json(
+      { error: 'User was deactivated during the reset process' },
+      { status: 409 }
+    )
+  }
 
   await logAudit({
     userId: session.user.id,

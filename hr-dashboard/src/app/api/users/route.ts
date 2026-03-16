@@ -230,12 +230,16 @@ export async function POST(request: NextRequest) {
     text: invitePayload.text,
   })
 
+  if (!emailResult.success) {
+    console.error(`[create-user] Invite email delivery failed for ${normalizedEmail}:`, emailResult.error)
+  }
+
   return NextResponse.json({
     ...user,
     invite: {
       status: emailResult.success ? 'sent' as const : 'failed' as const,
-      ...(emailResult.error ? { error: emailResult.error } : {}),
-      setupUrl,
+      ...(!emailResult.success ? { setupUrl } : {}),
+      ...(!emailResult.success ? { error: 'Invite email could not be delivered' } : {}),
     },
   }, { status: 201 })
 }
