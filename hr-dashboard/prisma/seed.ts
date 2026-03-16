@@ -12,14 +12,7 @@ import {
   PipelineHealth,
   UserRole,
 } from "../src/generated/prisma/enums";
-
-type SeedUser = {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  password: string;
-};
+import { PasswordSchema } from "../src/lib/validations/password";
 
 type SeedJob = {
   id: string;
@@ -63,48 +56,47 @@ type SeedApplication = {
   stageUpdatedAt: Date;
 };
 
-const seedPasswordFallback = process.env.SEED_USER_PASSWORD;
-const resolveSeedPassword = (role: string, value: string | undefined): string => {
-  if (!value) {
+// ---------------------------------------------------------------------------
+// Admin account from environment
+// ---------------------------------------------------------------------------
+
+function resolveAdminEnv(): { name: string; email: string; password: string } {
+  const name = process.env.ADMIN_NAME?.trim();
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+
+  const missing: string[] = [];
+  if (!name) missing.push("ADMIN_NAME");
+  if (!email) missing.push("ADMIN_EMAIL");
+  if (!password) missing.push("ADMIN_PASSWORD");
+
+  if (missing.length > 0) {
     throw new Error(
-      `Missing seed password for ${role}. Set SEED_${role}_PASSWORD or SEED_USER_PASSWORD before running prisma db seed.`,
+      `Missing required env vars for seeding: ${missing.join(", ")}. ` +
+        "Set ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD before running prisma db seed.",
     );
   }
-  return value;
-};
 
-const seedPasswords = {
-  ADMIN: resolveSeedPassword("ADMIN", process.env.SEED_ADMIN_PASSWORD ?? seedPasswordFallback),
-  RECRUITER: resolveSeedPassword(
-    "RECRUITER",
-    process.env.SEED_RECRUITER_PASSWORD ?? seedPasswordFallback,
-  ),
-  VIEWER: resolveSeedPassword("VIEWER", process.env.SEED_VIEWER_PASSWORD ?? seedPasswordFallback),
-};
+  if (name!.length < 1 || name!.length > 100) {
+    throw new Error("ADMIN_NAME must be 1-100 characters.");
+  }
 
-const users: SeedUser[] = [
-  {
-    id: "seed-user-admin",
-    name: "Admin User",
-    email: "admin@company.com",
-    role: UserRole.ADMIN,
-    password: seedPasswords.ADMIN,
-  },
-  {
-    id: "seed-user-recruiter",
-    name: "Jane Recruiter",
-    email: "jane.recruiter@company.com",
-    role: UserRole.RECRUITER,
-    password: seedPasswords.RECRUITER,
-  },
-  {
-    id: "seed-user-viewer",
-    name: "Bob Viewer",
-    email: "bob.viewer@company.com",
-    role: UserRole.VIEWER,
-    password: seedPasswords.VIEWER,
-  },
-];
+  // Basic email validation
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email!)) {
+    throw new Error("ADMIN_EMAIL must be a valid email address.");
+  }
+
+  // Validate password against shared policy
+  const result = PasswordSchema.safeParse(password);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => i.message).join("; ");
+    throw new Error(`ADMIN_PASSWORD does not meet policy: ${issues}`);
+  }
+
+  return { name: name!, email: email!, password: password! };
+}
+
+const adminEnv = resolveAdminEnv();
 
 const jobs: SeedJob[] = [
   {
@@ -650,33 +642,27 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
-async function seedUsers(prisma: PrismaClient) {
-  const passwordHashes = await Promise.all(
-    users.map(async (user) => [user.id, await hash(user.password, 10)] as const),
-  );
+async function seedAdmin(prisma: PrismaClient) {
+  const passwordHash = await hash(adminEnv.password, 10);
 
-  const passwordHashMap = new Map(passwordHashes);
-
-  for (const user of users) {
-    await prisma.user.upsert({
-      where: { id: user.id },
-      update: {
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        active: true,
-        passwordHash: passwordHashMap.get(user.id)!,
-      },
-      create: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        active: true,
-        passwordHash: passwordHashMap.get(user.id)!,
-      },
-    });
-  }
+  await prisma.user.upsert({
+    where: { email: adminEnv.email },
+    update: {
+      name: adminEnv.name,
+      role: UserRole.ADMIN,
+      active: true,
+      mustChangePassword: false,
+      passwordHash,
+    },
+    create: {
+      name: adminEnv.name,
+      email: adminEnv.email,
+      role: UserRole.ADMIN,
+      active: true,
+      mustChangePassword: false,
+      passwordHash,
+    },
+  });
 }
 
 async function seedJobs(prisma: PrismaClient) {
@@ -713,20 +699,16 @@ async function main() {
   const prisma = createPrismaClient();
 
   try {
-    await seedUsers(prisma);
+    await seedAdmin(prisma);
     await seedJobs(prisma);
     await seedCandidates(prisma);
     await seedApplications(prisma);
 
     console.log("Seed complete");
-    console.log(`Users: ${users.length}`);
+    console.log(`Admin: ${adminEnv.email}`);
     console.log(`Jobs: ${jobs.length}`);
     console.log(`Candidates: ${candidates.length}`);
     console.log(`Applications: ${applications.length}`);
-    console.log("Dev login credentials:");
-    console.log("  admin@company.com / admin123");
-    console.log("  jane.recruiter@company.com / recruiter123");
-    console.log("  bob.viewer@company.com / viewer123");
   } finally {
     await prisma.$disconnect();
   }

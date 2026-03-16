@@ -14,6 +14,7 @@ export function createMockSession(
       name: "Test Recruiter",
       email: "test.recruiter@company.com",
       role: UserRole.RECRUITER,
+      mustChangePassword: false,
       ...overrides,
     },
   }

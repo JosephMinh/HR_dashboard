@@ -289,6 +289,46 @@ export async function enforceApiRateLimit(
   return buildRateLimitResponse(scope, result)
 }
 
+/**
+ * Per-route rate limiter for sensitive endpoints (e.g., password change).
+ * Uses a custom key (e.g., "password-change:{userId}") with configurable limits.
+ * Returns a 429 NextResponse if exceeded, or null if allowed.
+ */
+export async function enforceRouteRateLimit(
+  key: string,
+  rule: { limit: number; windowMs: number },
+  now = Date.now(),
+): Promise<NextResponse | null> {
+  pruneStore(now)
+
+  const storeKey = `route:${key}`
+  const timestamps = getStore().get(storeKey) ?? []
+  const activeTimestamps = timestamps.filter((ts) => now - ts < rule.windowMs)
+
+  if (activeTimestamps.length >= rule.limit) {
+    getStore().set(storeKey, activeTimestamps)
+    const resetAt = (activeTimestamps[0] ?? now) + rule.windowMs
+    const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - now) / 1000))
+
+    return NextResponse.json(
+      { error: "Too many requests", retryAfterSeconds },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfterSeconds),
+          "X-RateLimit-Limit": String(rule.limit),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(Math.ceil(resetAt / 1000)),
+        },
+      },
+    )
+  }
+
+  const nextTimestamps = [...activeTimestamps, now]
+  getStore().set(storeKey, nextTimestamps)
+  return null
+}
+
 export function resetRateLimitStore() {
   getStore().clear()
 }
