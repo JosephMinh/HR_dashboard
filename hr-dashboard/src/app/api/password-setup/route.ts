@@ -1,7 +1,7 @@
 import { hash } from 'bcryptjs'
 import { NextRequest, NextResponse } from 'next/server'
 
-import { logAudit } from '@/lib/audit'
+import { getClientIp, logAudit } from '@/lib/audit'
 import {
   consumeSetPasswordToken,
   validateSetPasswordToken,
@@ -98,6 +98,19 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Avoid doing expensive bcrypt work when the token is already invalid.
+  const validationResult = await validateSetPasswordToken(token)
+  if (!validationResult.valid) {
+    return NextResponse.json(
+      {
+        error: 'Invalid password setup token',
+        valid: false,
+        reason: validationResult.reason,
+      },
+      { status: 400 },
+    )
+  }
+
   const newPasswordHash = await hash(newPassword, 10)
   const consumeResult = await consumeSetPasswordToken({
     token,
@@ -120,6 +133,7 @@ export async function POST(request: NextRequest) {
     action: 'USER_PASSWORD_CHANGED',
     entityType: 'User',
     entityId: consumeResult.userId,
+    ipAddress: getClientIp(request),
   })
 
   return NextResponse.json({ success: true })

@@ -36,7 +36,7 @@ export interface CreateUserInput {
 export interface InviteDeliveryOutcome {
   status: 'sent' | 'failed'
   error?: string
-  setupUrl: string
+  setupUrl?: string
 }
 
 export interface CreateUserResponse extends User {

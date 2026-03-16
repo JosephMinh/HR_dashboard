@@ -258,7 +258,26 @@ export async function consumeSetPasswordToken(params: {
     })
 
     if (consumeResult.count !== 1) {
-      return { success: false, reason: 'used' } satisfies ConsumeSetPasswordTokenResult
+      const currentState = await tx.setPasswordToken.findUnique({
+        where: { id: tokenRecord.id },
+        select: {
+          usedAt: true,
+          expiresAt: true,
+        },
+      })
+
+      if (!currentState) {
+        return { success: false, reason: 'invalid' } satisfies ConsumeSetPasswordTokenResult
+      }
+      if (currentState.usedAt) {
+        return { success: false, reason: 'used' } satisfies ConsumeSetPasswordTokenResult
+      }
+      if (currentState.expiresAt <= now) {
+        return { success: false, reason: 'expired' } satisfies ConsumeSetPasswordTokenResult
+      }
+
+      // Defensive fallback for unexpected concurrent state transitions.
+      return { success: false, reason: 'invalid' } satisfies ConsumeSetPasswordTokenResult
     }
 
     await tx.user.update({

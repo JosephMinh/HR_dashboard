@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { UnauthorizedState } from '@/components/ui/unauthorized-state'
@@ -535,11 +535,13 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('')
   const [activeFilter, setActiveFilter] = useState<'true' | 'false' | 'all'>('true')
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [statusBanner, setStatusBanner] = useState<StatusBanner | null>(null)
   const pageSize = 20
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
+    setFetchError(null)
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -556,7 +558,11 @@ export default function AdminUsersPage() {
         setUsers(data.users)
         setTotal(data.total)
         setTotalPages(data.totalPages)
+      } else {
+        setFetchError('Failed to load users. Please try again.')
       }
+    } catch {
+      setFetchError('Unable to connect. Please check your network and try again.')
     } finally {
       setLoading(false)
     }
@@ -663,6 +669,19 @@ export default function AdminUsersPage() {
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                         Loading...
+                      </td>
+                    </tr>
+                  ) : fetchError ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center">
+                        <p className="text-sm text-destructive">{fetchError}</p>
+                        <button
+                          type="button"
+                          onClick={() => fetchUsers()}
+                          className="mt-2 text-sm text-primary hover:text-primary/80"
+                        >
+                          Retry
+                        </button>
                       </td>
                     </tr>
                   ) : users.length === 0 ? (

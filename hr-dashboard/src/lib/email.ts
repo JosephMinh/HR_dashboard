@@ -39,6 +39,10 @@ export interface CapturedEmail extends EmailPayload {
 // ---------------------------------------------------------------------------
 
 function isTestEnv(): boolean {
+  // Never allow test-mode behavior in production, even if VITEST is mis-set.
+  if (process.env.NODE_ENV === 'production') {
+    return false
+  }
   return process.env.NODE_ENV === 'test' || process.env.VITEST === 'true'
 }
 
@@ -129,7 +133,8 @@ async function validateTransportOnce(transport: Transporter): Promise<void> {
 
 function getSenderAddress(): string {
   const cfg = getSmtpConfig()
-  const name = cfg.senderName || 'HR Dashboard'
+  // Strip CR/LF, quotes, and backslashes to prevent RFC 5322 header injection.
+  const name = (cfg.senderName || 'HR Dashboard').replace(/[\r\n"\\]/g, '')
   const email = cfg.senderEmail || 'noreply@example.com'
   return `"${name}" <${email}>`
 }

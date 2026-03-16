@@ -292,6 +292,7 @@ export async function enforceApiRateLimit(
 /**
  * Per-route rate limiter for sensitive endpoints (e.g., password change).
  * Uses a custom key (e.g., "password-change:{userId}") with configurable limits.
+ * Uses Redis when available (shared across serverless instances), falls back to in-memory.
  * Returns a 429 NextResponse if exceeded, or null if allowed.
  */
 export async function enforceRouteRateLimit(
@@ -299,9 +300,45 @@ export async function enforceRouteRateLimit(
   rule: { limit: number; windowMs: number },
   now = Date.now(),
 ): Promise<NextResponse | null> {
+  const storeKey = `route:${key}`
+
+  // Use Redis when available for cross-instance consistency
+  if (isRedisConfigured()) {
+    try {
+      const url = process.env.UPSTASH_REDIS_REST_URL!
+      const token = process.env.UPSTASH_REDIS_REST_TOKEN!
+      const redis = new Redis({ url, token })
+      const windowSeconds = Math.ceil(rule.windowMs / 1000)
+      const limiter = new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(rule.limit, `${windowSeconds} s`),
+        prefix: 'ratelimit:route',
+      })
+      const { success, limit, remaining, reset } = await limiter.limit(storeKey)
+
+      if (!success) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((reset - now) / 1000))
+        return NextResponse.json(
+          { error: "Too many requests", retryAfterSeconds },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(retryAfterSeconds),
+              "X-RateLimit-Limit": String(limit),
+              "X-RateLimit-Remaining": String(remaining),
+              "X-RateLimit-Reset": String(Math.ceil(reset / 1000)),
+            },
+          },
+        )
+      }
+      return null
+    } catch {
+      // Fall through to in-memory on Redis failure
+    }
+  }
+
   pruneStore(now)
 
-  const storeKey = `route:${key}`
   const timestamps = getStore().get(storeKey) ?? []
   const activeTimestamps = timestamps.filter((ts) => now - ts < rule.windowMs)
 

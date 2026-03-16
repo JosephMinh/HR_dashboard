@@ -39,6 +39,34 @@ async function waitForDatabase(maxRetries = 30, delayMs = 1000): Promise<void> {
   throw new Error("Database not ready after maximum retries")
 }
 
+function tryStartTestDatabase(): boolean {
+  try {
+    console.log("[E2E-SETUP] Database unavailable, attempting docker test DB startup...")
+    execSync("npm run test:db:up", { stdio: "pipe" })
+    console.log("[E2E-SETUP] Docker test DB startup command completed")
+    return true
+  } catch (error) {
+    console.warn("[E2E-SETUP] Could not auto-start test DB via docker:", error)
+    return false
+  }
+}
+
+async function ensureDatabaseReady(): Promise<void> {
+  try {
+    await waitForDatabase(10, 1000)
+    return
+  } catch {
+    const started = tryStartTestDatabase()
+    if (!started) {
+      throw new Error(
+        "Database is not reachable and automatic startup failed. Run `npm run test:db:up` and retry.",
+      )
+    }
+  }
+
+  await waitForDatabase(50, 1000)
+}
+
 async function pushSchema(): Promise<void> {
   console.log("[E2E-SETUP] Pushing Prisma schema to test database...")
   try {
@@ -67,8 +95,8 @@ export default async function globalSetup(): Promise<void> {
     // Clear cached auth state up front so contexts cannot be reused across DB resets.
     clearAuthStorage()
 
-    // 1. Wait for database
-    await waitForDatabase()
+    // 1. Wait for database (with one automatic startup attempt)
+    await ensureDatabaseReady()
 
     // 2. Push schema
     await pushSchema()

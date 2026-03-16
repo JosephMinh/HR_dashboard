@@ -1,3 +1,5 @@
+import crypto from 'node:crypto'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { listObjects, deleteObject } from '@/lib/storage'
@@ -55,8 +57,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (cronSecret) {
-    const authHeader = request.headers.get('authorization')
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    const authHeader = request.headers.get('authorization') ?? ''
+    const expected = `Bearer ${cronSecret}`
+    const headerBuf = Buffer.from(authHeader)
+    const expectedBuf = Buffer.from(expected)
+    if (headerBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(headerBuf, expectedBuf)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }

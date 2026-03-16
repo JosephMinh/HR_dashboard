@@ -125,6 +125,7 @@ model Candidate {
 
   applications   Application[]
 
+  @@index([firstName])
   @@index([lastName])
   @@index([email])
 }

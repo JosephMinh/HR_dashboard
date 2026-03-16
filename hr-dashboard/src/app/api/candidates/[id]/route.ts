@@ -250,7 +250,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (body.email && !isValidEmail(body.email)) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 })
     }
-    data.email = body.email?.trim() || null
+    data.email = body.email?.trim().toLowerCase() || null
   }
 
   if (body.linkedinUrl !== undefined) {

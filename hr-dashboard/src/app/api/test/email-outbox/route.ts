@@ -5,6 +5,10 @@ import { clearTestOutbox, getTestOutbox } from '@/lib/email'
 export const dynamic = 'force-dynamic'
 
 function isTestOutboxEnabled(): boolean {
+  // Keep this route unavailable in production even if VITEST is misconfigured.
+  if (process.env.NODE_ENV === 'production') {
+    return false
+  }
   return process.env.NODE_ENV === 'test' || process.env.VITEST === 'true'
 }
 

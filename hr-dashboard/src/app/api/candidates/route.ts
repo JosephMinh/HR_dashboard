@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
   const candidateData = {
     firstName,
     lastName,
-    email: body.email?.trim() || null,
+    email: body.email?.trim().toLowerCase() || null,
     phone: body.phone?.trim() || null,
     linkedinUrl: body.linkedinUrl?.trim() || null,
     currentCompany: body.currentCompany?.trim() || null,
