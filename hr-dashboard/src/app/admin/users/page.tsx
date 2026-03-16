@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { canManageUsers } from '@/lib/permissions'
-import { Plus, RotateCcw, Copy, Check, Search } from 'lucide-react'
+import { Plus, RotateCcw, Copy, Check, Search, Mail, AlertTriangle } from 'lucide-react'
 
 interface User {
   id: string
@@ -62,26 +62,66 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function TempPasswordDisplay({ password }: { password: string }) {
+interface StatusBanner {
+  type: 'success' | 'warning'
+  message: string
+  setupUrl?: string
+}
+
+function InviteStatusBanner({ status, onDismiss }: { status: StatusBanner; onDismiss: () => void }) {
+  const isSuccess = status.type === 'success'
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
-      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-        Temporary Password (shown only once)
-      </p>
-      <div className="mt-2 flex items-center gap-2">
-        <code className="rounded bg-amber-100 px-2 py-1 font-mono text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
-          {password}
-        </code>
-        <CopyButton text={password} />
+    <div className={`rounded-md border p-4 ${
+      isSuccess
+        ? 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-900/20'
+        : 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20'
+    }`}>
+      <div className="flex items-start gap-2">
+        {isSuccess ? (
+          <Mail className="mt-0.5 h-4 w-4 text-green-700 dark:text-green-400 shrink-0" />
+        ) : (
+          <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0" />
+        )}
+        <div className="flex-1">
+          <p className={`text-sm font-medium ${
+            isSuccess
+              ? 'text-green-800 dark:text-green-300'
+              : 'text-amber-800 dark:text-amber-300'
+          }`}>
+            {status.message}
+          </p>
+          {status.setupUrl && (
+            <div className="mt-2">
+              <p className={`text-xs ${isSuccess ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                Setup link (share manually if needed):
+              </p>
+              <div className="mt-1 flex items-center gap-2">
+                <code className={`rounded px-2 py-1 font-mono text-xs break-all ${
+                  isSuccess
+                    ? 'bg-green-100 text-green-900 dark:bg-green-900/40 dark:text-green-200'
+                    : 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200'
+                }`}>
+                  {status.setupUrl}
+                </code>
+                <CopyButton text={status.setupUrl} />
+              </div>
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-xs text-muted-foreground hover:text-foreground"
+          aria-label="Dismiss"
+        >
+          &times;
+        </button>
       </div>
-      <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-        Save this password now. It cannot be retrieved later. The user will be required to change it on first login.
-      </p>
     </div>
   )
 }
 
-function CreateUserDialog({ onCreated }: { onCreated: (user: User, tempPassword: string) => void }) {
+function CreateUserDialog({ onCreated }: { onCreated: (user: User, invite: { status: string; setupUrl?: string; error?: string }) => void }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -116,7 +156,7 @@ function CreateUserDialog({ onCreated }: { onCreated: (user: User, tempPassword:
         return
       }
 
-      onCreated(data, data.tempPassword)
+      onCreated(data, data.invite ?? { status: 'sent' })
       setOpen(false)
       reset()
     } catch {
@@ -316,13 +356,13 @@ function ResetPasswordButton({
 }: {
   userId: string
   userName: string
-  onReset: (tempPassword: string) => void
+  onReset: (result: { success: boolean; error?: string }) => void
 }) {
   const [resetting, setResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleReset() {
-    if (!confirm(`Reset password for ${userName}? They will need to set a new password on next login.`)) {
+    if (!confirm(`Reset password for ${userName}? A password reset email will be sent to their email address.`)) {
       return
     }
 
@@ -337,13 +377,16 @@ function ResetPasswordButton({
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || 'Failed to reset password')
+        const errMsg = data.error || 'Failed to reset password'
+        setError(errMsg)
+        onReset({ success: false, error: errMsg })
         return
       }
 
-      onReset(data.tempPassword)
+      onReset({ success: true })
     } catch {
       setError('An unexpected error occurred')
+      onReset({ success: false, error: 'An unexpected error occurred' })
     } finally {
       setResetting(false)
     }
@@ -358,7 +401,7 @@ function ResetPasswordButton({
         disabled={resetting}
       >
         <RotateCcw className="mr-1 h-3 w-3" />
-        {resetting ? 'Resetting...' : 'Reset PW'}
+        {resetting ? 'Sending...' : 'Reset PW'}
       </Button>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
@@ -384,7 +427,7 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('')
   const [activeFilter, setActiveFilter] = useState<'true' | 'false' | 'all'>('true')
   const [loading, setLoading] = useState(true)
-  const [tempPassword, setTempPassword] = useState<string | null>(null)
+  const [statusBanner, setStatusBanner] = useState<StatusBanner | null>(null)
   const pageSize = 20
 
   const fetchUsers = useCallback(async () => {
@@ -430,13 +473,21 @@ export default function AdminUsersPage() {
     )
   }
 
-  function handleCreated(_user: User, password: string) {
-    setTempPassword(password)
+  function handleCreated(_user: User, invite: { status: string; setupUrl?: string; error?: string }) {
+    if (invite.status === 'sent') {
+      setStatusBanner({ type: 'success', message: 'User created. An onboarding invite email has been sent.', setupUrl: invite.setupUrl })
+    } else {
+      setStatusBanner({ type: 'warning', message: 'User created, but the invite email could not be sent. Share the setup link manually.', setupUrl: invite.setupUrl })
+    }
     fetchUsers()
   }
 
-  function handleResetPassword(password: string) {
-    setTempPassword(password)
+  function handleResetPassword(result: { success: boolean; error?: string }) {
+    if (result.success) {
+      setStatusBanner({ type: 'success', message: 'Password reset email sent successfully.' })
+    } else {
+      setStatusBanner({ type: 'warning', message: result.error || 'Password reset email could not be sent. The existing password remains unchanged.' })
+    }
   }
 
   return (
@@ -450,8 +501,8 @@ export default function AdminUsersPage() {
           <CreateUserDialog onCreated={handleCreated} />
         </div>
 
-        {tempPassword && (
-          <TempPasswordDisplay password={tempPassword} />
+        {statusBanner && (
+          <InviteStatusBanner status={statusBanner} onDismiss={() => setStatusBanner(null)} />
         )}
 
         {/* Search and filters */}
@@ -532,7 +583,7 @@ export default function AdminUsersPage() {
                             )}
                             {user.mustChangePassword && (
                               <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400">
-                                Temp PW
+                                Pending Setup
                               </Badge>
                             )}
                           </div>
