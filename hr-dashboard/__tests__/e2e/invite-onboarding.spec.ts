@@ -1,3 +1,4 @@
+import "dotenv/config" // Must be first - hashSetPasswordToken triggers @/lib/prisma which needs DATABASE_URL
 import crypto from "node:crypto"
 
 import { hash } from "bcryptjs"
