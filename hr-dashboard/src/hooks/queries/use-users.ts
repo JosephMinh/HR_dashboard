@@ -51,7 +51,7 @@ export interface UpdateUserInput {
 }
 
 export interface ResetPasswordResponse {
-  tempPassword: string
+  success: true
 }
 
 /**

@@ -199,7 +199,7 @@ describe("Integration: Admin User Management API", () => {
       expect(response.status).toBe(403)
     })
 
-    it("creates user with temp password and sets mustChangePassword=true", async () => {
+    it("creates user with set-password invite and sets mustChangePassword=true", async () => {
       const { POST } = await import("@/app/api/users/route")
       const response = await POST(
         new Request("http://localhost/api/users", {
@@ -214,10 +214,11 @@ describe("Integration: Admin User Management API", () => {
       expect(data.role).toBe("RECRUITER")
       expect(data.mustChangePassword).toBe(true)
       expect(data.active).toBe(true)
-      expect(data.tempPassword).toBeDefined()
-      expect(typeof data.tempPassword).toBe("string")
-      expect(data.tempPassword.length).toBeGreaterThanOrEqual(12)
       expect(data).not.toHaveProperty("passwordHash")
+      expect(data.invite).toBeDefined()
+      expect(data.invite.status).toBe("sent")
+      expect(typeof data.invite.setupUrl).toBe("string")
+      expect(data.invite.setupUrl).toContain("/set-password?token=")
     })
 
     it("normalizes email to lowercase", async () => {
@@ -437,6 +438,20 @@ describe("Integration: Admin User Management API", () => {
       expect(data.error).toContain("last admin")
     })
 
+    it("returns 400 for invalid UUID", async () => {
+      const { PATCH } = await import("@/app/api/users/[id]/route")
+      const response = await PATCH(
+        new Request("http://localhost/api/users/seed-user-admin", {
+          method: "PATCH",
+          body: JSON.stringify({ name: "Updated" }),
+        }) as never,
+        { params: Promise.resolve({ id: "seed-user-admin" }) },
+      )
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data.error).toContain("Invalid user ID")
+    })
+
     it("returns 400 when no fields provided", async () => {
       const user = await factories.createUser({ email: "target@test.com" })
       const { PATCH } = await import("@/app/api/users/[id]/route")
@@ -516,7 +531,7 @@ describe("Integration: Admin User Management API", () => {
       expect(response.status).toBe(403)
     })
 
-    it("resets password and sets mustChangePassword=true", async () => {
+    it("sends reset email and invalidates password on success", async () => {
       const user = await factories.createUser({ email: "target@test.com" })
 
       const { POST } = await import("@/app/api/users/[id]/reset-password/route")
@@ -528,14 +543,26 @@ describe("Integration: Admin User Management API", () => {
       )
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.tempPassword).toBeDefined()
-      expect(typeof data.tempPassword).toBe("string")
-      expect(data.tempPassword.length).toBeGreaterThanOrEqual(12)
+      expect(data.success).toBe(true)
+      expect(data).not.toHaveProperty("tempPassword")
 
       // Verify DB state
       const prisma = getTestPrisma()
       const updated = await prisma.user.findUnique({ where: { id: user.id } })
       expect(updated?.mustChangePassword).toBe(true)
+    })
+
+    it("returns 400 for invalid UUID", async () => {
+      const { POST } = await import("@/app/api/users/[id]/reset-password/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/seed-user-admin/reset-password", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: "seed-user-admin" }) },
+      )
+      expect(response.status).toBe(400)
+      const data = await response.json()
+      expect(data.error).toContain("Invalid user ID")
     })
 
     it("returns 404 for non-existent user", async () => {
