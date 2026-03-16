@@ -1,17 +1,31 @@
 # HR Dashboard
 
-HR Dashboard is a full-stack recruiting operations platform for managing jobs, candidates, and hiring pipeline health in one place.
-
-This repository contains the production application code, API layer, database schema, and automated test suite for the platform.
+A full-stack recruiting operations platform for managing jobs, candidates, and hiring pipeline health. Built with Next.js 16, React 19, Prisma 7, and PostgreSQL.
 
 ## What It Does
 
-- Tracks job openings from intake to close
-- Manages candidate profiles and resume metadata
-- Connects candidates to jobs through staged applications
-- Surfaces pipeline health and critical hiring risk
-- Enforces role-based permissions for HR teams
-- Captures audit logs for write operations
+- Tracks job openings from intake to close with priority, health, and ownership
+- Manages candidate profiles, resume metadata, and contact details
+- Connects candidates to jobs through staged applications (8 hiring stages)
+- Surfaces pipeline health and critical hiring risk on a decision-first dashboard
+- Enforces role-based permissions for HR teams (Admin, Recruiter, Viewer)
+- Captures audit logs with before/after snapshots for every write operation
+- Provisions users via email-based onboarding invites with secure token links
+
+## Technology Stack
+
+| Layer | Technology |
+| --- | --- |
+| Framework | Next.js 16 (App Router), React 19, TypeScript 5 |
+| Data | Prisma 7 + PostgreSQL |
+| Auth | Auth.js 5 (credentials provider, JWT sessions) |
+| Client state | TanStack Query 5, TanStack Form 1, TanStack Table 8 |
+| UI | Tailwind CSS 4, Lucide icons, Sonner toasts |
+| Storage | S3-compatible (AWS S3 or MinIO) |
+| Email | Nodemailer 8 (SMTP, dev preview, test capture) |
+| Rate limiting | Upstash Redis (production), in-memory fallback (dev) |
+| Testing | Vitest 4 (unit/integration), Playwright 1.58 (E2E) |
+| Package manager | Bun |
 
 ## Core Product Areas
 
@@ -36,583 +50,380 @@ This repository contains the production application code, API layer, database sc
 ### Applications
 
 - Candidate-to-job relationships with explicit stage tracking
-- Canonical hiring stages:
-  - `NEW`
-  - `SCREENING`
-  - `INTERVIEWING`
-  - `FINAL_ROUND`
-  - `OFFER`
-  - `HIRED`
-  - `REJECTED`
-  - `WITHDRAWN`
+- Hiring stages: `NEW` > `SCREENING` > `INTERVIEWING` > `FINAL_ROUND` > `OFFER` > `HIRED` | `REJECTED` | `WITHDRAWN`
+
+### User Management (Admin)
+
+- Create, edit, deactivate, and delete users
+- Resend onboarding invites and trigger password resets
+- Role assignment (Admin, Recruiter, Viewer)
+
+## Data Model
+
+Six primary entities:
+
+| Model | Purpose |
+| --- | --- |
+| `User` | Identity, role, active state, password lifecycle |
+| `Job` | Opening with priority, health, lifecycle dates |
+| `Candidate` | Profile, contact info, resume metadata |
+| `Application` | Job-candidate stage progression (unique per pair) |
+| `AuditLog` | Who changed what, when, with before/after JSON |
+| `SetPasswordToken` | HMAC-SHA256 hashed tokens for onboarding and password resets |
 
 ## Security Model
 
+### Authentication & Sessions
+
 - Session-based authentication via Auth.js (credentials provider)
-- Role-based access control with three roles:
-  - `ADMIN`
-  - `RECRUITER`
-  - `VIEWER`
-- Hardened HTTP security headers with a route-wide CSP, frame protection, MIME sniffing protection, referrer controls, and browser feature restrictions
-- Signed object URLs for controlled resume upload/download access
-- Defensive validation for file type, file size, and storage keys
-- Admin-managed user provisioning with temporary password enforcement
-- Password policy: minimum 12 characters, uppercase, lowercase, number, and symbol required
+- JWT sessions with 4-hour TTL
 - Emails normalized to lowercase on creation and login
 
-### User Management & Password Lifecycle
-
-Users are provisioned by administrators — there is no self-registration.
-
-1. An admin creates a user via `/admin/users`, which generates a temporary password.
-2. The temporary password is displayed once and must be shared securely.
-3. On first login, the user is gated to `/settings/password` and must change their password before accessing any other page.
-4. After changing their password, the user can navigate freely.
-5. Admins can reset any user's password, which re-enables the forced-change gate.
-
-**Password policy:** Minimum 12 characters with at least one uppercase letter, one lowercase letter, one number, and one symbol.
-
-**Known limitation:** Deactivating a user does not invalidate their active JWT session. Sessions expire naturally after 4 hours. Admins should be aware that deactivated users may retain access until their session expires.
-
-### Security Headers
-
-The application configures defense-in-depth response headers in [`next.config.ts`](./next.config.ts):
-
-- `Content-Security-Policy` blocks framing, disallows plugin/object content, and limits script/style/resource origins
-- `X-Frame-Options: DENY` protects legacy browsers against clickjacking
-- `X-Content-Type-Options: nosniff` disables MIME sniffing
-- `Referrer-Policy: strict-origin-when-cross-origin` limits cross-site referrer leakage
-- `Permissions-Policy: camera=(), microphone=(), geolocation=()` disables unnecessary browser capabilities
-- `Strict-Transport-Security` is enabled in production only to enforce HTTPS without breaking local development
-
-### CSRF Posture
-
-The application uses two complementary protections for authenticated mutations:
-
-1. Auth.js session and callback cookies are left on the library defaults: host-only, `httpOnly`, `SameSite=Lax`, and automatically `secure` on HTTPS deployments.
-2. Built-in Auth.js CSRF token validation remains active for Auth.js-managed POST actions such as credentials sign-in and sign-out.
-3. Application-owned API mutations live under `src/app/api` and use only `POST`, `PATCH`, or `DELETE`. No custom `GET` route performs writes.
-
-Current decision:
-
-- Do not add a second custom CSRF token layer for the app routes at this stage.
-- The current threat model is covered by host-only SameSite cookies plus Auth.js CSRF enforcement on sensitive auth actions.
-- Do not override Auth.js cookie settings casually; custom cookie configuration opts the app into maintaining that security policy manually.
-
-### Rate Limiting
-
-Production uses **Cloudflare proxy + rate limiting** as the primary defense. The app-level limiter remains as a secondary backstop for defense-in-depth (shared store when configured, in-memory fallback for local/dev). Do not rely on the in-memory limiter as the primary production control.
-
-Recommended Cloudflare rate-limit rules (per IP):
-
-| Scope | Limit | Window | Notes |
-| --- | --- | --- | --- |
-| `/api/auth/*` | 10 | 1 min | Prevent brute-force logins |
-| `/api/upload/*` | 20 | 1 min | Protect storage and upload endpoints |
-| `POST|PATCH|DELETE /api/*` | 60 | 1 min | Reasonable mutation rate |
-| `GET /api/*` | 300 | 1 min | Allows browsing/search without abuse |
-
-If your Cloudflare plan supports custom responses, return `429` with a `Retry-After` header for client clarity.
-
-## Technology Stack
-
-- **Framework:** Next.js (App Router), React, TypeScript
-- **Data layer:** Prisma + PostgreSQL
-- **Auth:** NextAuth/Auth.js
-- **Client state:** TanStack Query
-- **UI:** Tailwind CSS + component primitives
-- **Storage:** S3-compatible object storage (AWS S3 or MinIO)
-- **Testing:** Vitest (unit/integration) + Playwright (end-to-end)
-
-## Data Model (High Level)
-
-The system is centered around five primary entities:
-
-- `User` (identity, role, active state)
-- `Job` (opening, priority, health, lifecycle dates)
-- `Candidate` (profile and resume metadata)
-- `Application` (job-candidate stage progression)
-- `AuditLog` (who changed what, and when)
-
-## API Surface (Summary)
-
-The app exposes route handlers under `src/app/api`, including:
-
-- `jobs`
-- `candidates`
-- `applications`
-- `users` (admin CRUD, self-service profile & password)
-- `dashboard/stats`
-- `upload/resume`
-- `auth`
-
-## API Input Validation Constraints
-
-The application data routes require an authenticated session. Mutation routes on those data routes require `ADMIN` or `RECRUITER` role.
-
-`/api/auth/*` is handled by Auth.js rather than the custom route handlers summarized below, and `/api/cron/cleanup-orphaned-resumes` is an operational endpoint protected by `CRON_SECRET` when configured.
-
-Route handlers under `src/app/api` are the source of truth for the live API contract. Shared Zod/form schemas support the UI, but they should be treated as secondary until they are explicitly kept in lockstep with the server handlers.
-
-### Jobs
-
-**GET `/api/jobs` (query parameters)**
-
-| Param | Type | Constraints | Default | Notes |
-| --- | --- | --- | --- | --- |
-| page | number | Integer ≥ 1 | 1 | Invalid values return 400 |
-| pageSize | number | Integer 1-100 | 20 | Invalid values return 400 |
-| sort | string | `title`, `status`, `targetFillDate`, `updatedAt`, `department`, `openedAt` | `updatedAt` | Invalid values return 400 |
-| order | string | `asc`, `desc` | `desc` | Invalid values return 400 |
-| status | string | Comma-separated `OPEN`, `CLOSED`, `ON_HOLD` | - | Invalid values are ignored |
-| department | string | Comma-separated values | - | Trimmed per item |
-| pipelineHealth | string | Comma-separated `AHEAD`, `ON_TRACK`, `BEHIND` | - | Invalid values are ignored |
-| critical | string | Must be `true` to filter | - | Any other value ignored |
-| search | string | Max 200 chars | - | Applied to title contains (case-insensitive) |
-| includeCount | boolean | `true` | `false` | Includes active candidate counts |
-
-**POST `/api/jobs` (body)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| title | string | Yes | Trimmed, 3-200 chars | Required |
-| department | string | Yes | Trimmed, 1-100 chars | Required |
-| description | string | Yes | Trimmed, 10-10000 chars | Required |
-| location | string | No | Trimmed, max 200 chars | Empty becomes `null` |
-| hiringManager | string | No | Trimmed, max 100 chars | Empty becomes `null` |
-| recruiterOwner | string | No | Trimmed, max 100 chars | Empty becomes `null` |
-| status | enum | No | `OPEN`, `CLOSED`, `ON_HOLD` | Default `OPEN` |
-| priority | enum | No | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | Default `MEDIUM` |
-| pipelineHealth | enum | Cond. | `AHEAD`, `ON_TRACK`, `BEHIND` | Required when status is `OPEN` |
-| isCritical | boolean | No | - | Default `false` |
-| openedAt | ISO date | No | Must be valid date | Default `now()` |
-| targetFillDate | ISO date | No | Must be valid date, must be >= openedAt | Default `null` |
-
-**PATCH `/api/jobs/:id` (body + route param)**
-
-Route param `:id` must be a valid UUID.
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| title | string | No | Trimmed, 3-200 chars | Cannot be empty |
-| department | string | No | Trimmed, 1-100 chars | Cannot be empty |
-| description | string | No | Trimmed, 10-10000 chars | Cannot be empty |
-| location | string | No | Trimmed, max 200 chars | `null` clears |
-| hiringManager | string | No | Trimmed, max 100 chars | `null` clears |
-| recruiterOwner | string | No | Trimmed, max 100 chars | `null` clears |
-| status | enum | No | `OPEN`, `CLOSED`, `ON_HOLD` | - |
-| priority | enum | No | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | - |
-| pipelineHealth | enum | No | `AHEAD`, `ON_TRACK`, `BEHIND` | Required when status is `OPEN` |
-| isCritical | boolean | No | - | - |
-| openedAt | ISO date | No | Valid date or `null` | `null` clears |
-| targetFillDate | ISO date | No | Valid date or `null`, must be >= openedAt | `null` clears |
-| closedAt | ISO date | No | Valid date or `null` | Allowed only when status is `CLOSED` |
-
-Additional PATCH rules:
-
-1. `targetFillDate` cannot be earlier than `openedAt`.
-2. `pipelineHealth` must be set when status is `OPEN`.
-3. `closedAt` must be non-null when status is `CLOSED`; otherwise it must be null.
-4. At least one valid field must be provided; otherwise 400 is returned.
-
-**GET `/api/jobs/:id` and DELETE `/api/jobs/:id`**
-
-- Route param `:id` must be a valid UUID.
-- `GET` returns 404 when the job does not exist.
-- `DELETE` returns 404 when the job does not exist and 403 for `VIEWER`.
-
-### Candidates
-
-**GET `/api/candidates` (query parameters)**
-
-| Param | Type | Constraints | Default | Notes |
-| --- | --- | --- | --- | --- |
-| page | number | Integer ≥ 1 | 1 | Invalid values return 400 |
-| pageSize | number | Integer 1-100 | 20 | Invalid values return 400 |
-| sort | string | `name`, `email`, `updatedAt` | `name` | Invalid values return 400 |
-| order | string | `asc`, `desc` | `asc` | Invalid values return 400 |
-| search | string | Max 200 chars | - | Matches first name, last name, email |
-| includeJobCount | boolean | `true` | `false` | Adds applications count |
-
-**POST `/api/candidates` (body)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| firstName | string | Yes | Trimmed, 1-100 chars | Required |
-| lastName | string | Yes | Trimmed, 1-100 chars | Required |
-| email | string | No | Max 254 chars, RFC-style email validation | Empty becomes `null` |
-| phone | string | No | Trimmed | Empty becomes `null` |
-| linkedinUrl | string | No | Valid URL; hostname `linkedin.com` or `*.linkedin.com` | Empty becomes `null` |
-| currentCompany | string | No | Trimmed | Empty becomes `null` |
-| location | string | No | Trimmed | Empty becomes `null` |
-| source | enum | No | `REFERRAL`, `LINKEDIN`, `CAREERS_PAGE`, `AGENCY`, `OTHER` | - |
-| resumeKey | string | No | Must match `resumes/{uuid}.{ext}` | Must be paired with resumeName |
-| resumeName | string | No | Required if resumeKey provided | Must be paired with resumeKey |
-| notes | string | No | Trimmed, max 10000 chars | Empty becomes `null` |
-| jobId | string | No | Must reference existing job | If provided, creates an application |
-
-**PATCH `/api/candidates/:id` (body + route param)**
-
-Route param `:id` must be a valid UUID.
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| firstName | string | No | Trimmed, 1-100 chars | Cannot be empty |
-| lastName | string | No | Trimmed, 1-100 chars | Cannot be empty |
-| email | string | No | Max 254 chars, RFC-style email validation | `null` clears |
-| phone | string | No | Trimmed | `null` clears |
-| linkedinUrl | string | No | Valid URL; hostname `linkedin.com` or `*.linkedin.com` | `null` clears |
-| currentCompany | string | No | Trimmed | `null` clears |
-| location | string | No | Trimmed | `null` clears |
-| source | enum | No | `REFERRAL`, `LINKEDIN`, `CAREERS_PAGE`, `AGENCY`, `OTHER` | `null` clears |
-| resumeKey | string | No | Must match `resumes/{uuid}.{ext}` | Must be paired with resumeName |
-| resumeName | string | No | Required if resumeKey provided | Must be paired with resumeKey |
-| notes | string | No | Trimmed, max 10000 chars | `null` clears |
-
-Additional PATCH rules:
-
-1. `resumeKey` and `resumeName` must be provided together (including when clearing).
-2. At least one valid field must be provided; otherwise 400 is returned.
-
-**GET `/api/candidates/:id` and DELETE `/api/candidates/:id`**
-
-- Route param `:id` must be a valid UUID.
-- `GET` returns 404 when the candidate does not exist.
-- `DELETE` returns 404 when the candidate does not exist and 403 for `VIEWER`.
-- Candidate deletion attempts to remove the linked resume object first, then deletes the candidate record.
-
-### Applications
-
-**POST `/api/applications` (body)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| jobId | UUID | Yes | Valid UUID | Must reference existing job |
-| candidateId | UUID | Yes | Valid UUID | Must reference existing candidate |
-| stage | enum | No | `NEW`, `SCREENING`, `INTERVIEWING`, `FINAL_ROUND`, `OFFER`, `HIRED`, `REJECTED`, `WITHDRAWN` | Default `NEW` |
-| recruiterOwner | string | No | Trimmed, max 100 chars | Empty becomes `null` |
-| interviewNotes | string | No | Trimmed, max 50000 chars | Empty becomes `null` |
-
-**PATCH `/api/applications/:id` (body + route param)**
-
-Route param `:id` must be a valid UUID.
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| stage | enum | No | `NEW`, `SCREENING`, `INTERVIEWING`, `FINAL_ROUND`, `OFFER`, `HIRED`, `REJECTED`, `WITHDRAWN` | Updates `stageUpdatedAt` when changed |
-| recruiterOwner | string | No | Trimmed, max 100 chars | `null` clears |
-| interviewNotes | string | No | Trimmed, max 50000 chars | `null` clears |
-
-Additional PATCH rule: at least one valid field must be provided; otherwise 400 is returned.
-
-**DELETE `/api/applications/:id`**
-
-- Route param `:id` must be a valid UUID.
-- Returns 404 when the application does not exist and 403 for `VIEWER`.
-
-### Users (Admin)
-
-**GET `/api/users` (query parameters)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| page | number | No | Integer ≥ 1 | Default `1` |
-| limit | number | No | Integer 1–100 | Default `20` |
-| search | string | No | Trimmed, max 100 chars | Searches name and email |
-| active | `true`/`false` | No | - | Filters by active state |
-
-**POST `/api/users` (body)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| name | string | Yes | Trimmed, 1–100 chars | - |
-| email | string | Yes | Valid email, lowercased, max 254 chars | Must be unique |
-| role | enum | Yes | `ADMIN`, `RECRUITER`, `VIEWER` | - |
-
-- Creates user with a generated temporary password (`mustChangePassword: true`).
-- Returns the temp password in the response (one-time display).
-- Requires `ADMIN` role; returns 403 otherwise.
-
-**PATCH `/api/users/:id` (body + route param)**
-
-Route param `:id` must be a valid UUID.
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| name | string | No | Trimmed, 1–100 chars | - |
-| email | string | No | Valid email, lowercased, max 254 chars | Must be unique |
-| role | enum | No | `ADMIN`, `RECRUITER`, `VIEWER` | Cannot change own role |
-| active | boolean | No | - | Cannot deactivate self or last admin |
-
-- Requires `ADMIN` role; returns 403 otherwise.
-- At least one valid field must be provided; otherwise 400.
-
-**POST `/api/users/:id/reset-password` (route param)**
-
-- Route param `:id` must be a valid UUID.
-- Requires `ADMIN` role; returns 403 otherwise.
-- Generates a new temporary password and sets `mustChangePassword: true`.
-- Rate limited.
-
-### Users (Self-Service)
-
-**PATCH `/api/users/me` (body)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| name | string | No | Trimmed, 1–100 chars | At least one field required |
-
-- Returns 403 if the user has `mustChangePassword: true`.
-
-**POST `/api/users/me/password` (body)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| currentPassword | string | Yes | - | Must match stored hash |
-| newPassword | string | Yes | Min 12 chars, uppercase, lowercase, number, symbol | Must differ from current |
-
-- Clears `mustChangePassword` on success.
-- Rate limited.
-
-### Resume Uploads
-
-**POST `/api/upload/resume` (body)**
-
-| Field | Type | Required | Constraints | Notes |
-| --- | --- | --- | --- | --- |
-| filename | string | Yes | Must include extension: `pdf`, `doc`, `docx`, `txt`, `rtf` | - |
-| contentType | string | No | Must match extension if provided (unless `application/octet-stream`) | - |
-| sizeBytes | number | Yes | Integer > 0 and ≤ 10MB | - |
-
-**GET `/api/upload/resume/:key` (route param)**
-
-Route param `:key` must match `resumes/{uuid}.{ext}` where ext is `pdf`, `doc`, `docx`, `txt`, `rtf`.
-
-Additional download rules:
-
-- Requires `ADMIN` or `RECRUITER`; `VIEWER` receives 403.
-- The key must already be linked to a candidate record or the route returns 404.
-
-### Other API Routes
-
-- `GET /api/dashboard/stats` has no request parameters beyond authentication and returns 401 for unauthenticated requests.
-- `GET /api/cron/cleanup-orphaned-resumes` is an operational endpoint, not a user-facing app route. It deletes orphaned resume objects older than 7 days and expects `Authorization: Bearer $CRON_SECRET` when the secret is configured.
-
-## Repository Structure
-
-```text
-hr-dashboard/
-├── prisma/                # Schema and seed data
-├── src/
-│   ├── app/               # App Router pages and API routes
-│   ├── components/        # UI and layout components
-│   ├── hooks/             # Query and form hooks
-│   ├── lib/               # Auth, permissions, storage, utilities
-│   └── test/              # Shared test utilities
-├── __tests__/             # Unit, integration, and E2E suites
-├── docs/                  # Architecture and migration docs
-└── scripts/               # Ops/developer helper scripts
-```
-
-## Environment Requirements
-
-This application expects the following infrastructure:
-
-- PostgreSQL database
-- S3-compatible object storage bucket for resumes
-- Auth secret and trusted host configuration
-
-Reference variables are documented in [`.env.example`](./.env.example).
-
-## Notes for Public Readers
-
-- This repository is the source code for a real internal-facing HR platform, not a one-click demo.
-- Deployment and runtime environments differ by organization.
-- Public documentation here focuses on architecture and implementation quality rather than consumer onboarding steps.
-
-## Problem Statement & Goals
-
-Recruiting teams are frequently forced to stitch together spreadsheets, ATS exports, and ad-hoc notes. The result is a fragmented workflow where critical signals (pipeline risk, role ownership, bottlenecks) are buried across tools. This platform centralizes those signals and turns them into a decision-support workspace.
-
-Primary goals:
-
-1. Reduce time-to-hire by giving recruiters immediate visibility into pipeline health.
-2. Prevent hiring risk by surfacing critical roles and stalled stages early.
-3. Eliminate operational drift by enforcing clear ownership, status, and audit trails.
-4. Support fast, safe mutation workflows with clear recovery paths.
-
-## Roles & Permissions
-
-The system is designed around three roles with distinct responsibilities. Permissions are enforced at the API layer and reflected in UI affordances.
+### Roles & Permissions
 
 | Capability | ADMIN | RECRUITER | VIEWER |
 | --- | --- | --- | --- |
-| Manage users and roles | ✅ | ❌ | ❌ |
-| Create, edit, close jobs | ✅ | ✅ | ❌ |
-| Create and update candidates | ✅ | ✅ | ❌ |
-| Move application stages | ✅ | ✅ | ❌ |
-| View dashboards and reports | ✅ | ✅ | ✅ |
-| View audit log entries | ✅ | ✅ | ✅ |
+| Manage users and roles | Yes | No | No |
+| Create, edit, close jobs | Yes | Yes | No |
+| Create and update candidates | Yes | Yes | No |
+| Move application stages | Yes | Yes | No |
+| Upload and download resumes | Yes | Yes | No |
+| View dashboards and reports | Yes | Yes | Yes |
 
-## User Management & Password Lifecycle
+### User Onboarding & Password Lifecycle
 
-Admins manage the full user lifecycle from `/admin/users`:
+Users are provisioned by administrators -- there is no self-registration.
 
-1. **Create**: Admin creates a user with name, email, and role. A temporary password is generated and shown exactly once.
-2. **Login**: User logs in with email and temporary password.
-3. **Forced change**: Users with `mustChangePassword=true` are redirected to `/settings/password` and cannot access other pages until they set a new password.
-4. **Self-service**: Users can update their name at `/settings/profile` and change their password at `/settings/password`.
-5. **Reset**: Admin can reset any user's password, generating a new temporary password and re-enabling the forced-change gate.
-6. **Deactivation**: Admin can deactivate a user (soft-delete preserving audit trail).
+1. An admin creates a user via `/admin/users` with name, email, and role.
+2. The system generates a secure set-password token (32 random bytes, HMAC-SHA256 hashed) and sends an onboarding invite email with a token link.
+3. The user clicks the link, which opens `/set-password?token=...`, validates the token, and prompts them to choose a password.
+4. After setting their password, the user can log in normally.
+5. Admins can resend the invite email (issues a fresh token, invalidates prior unused tokens).
+6. Admins can trigger a password reset, which sends a reset email and invalidates the existing password only after successful email delivery.
+7. Users can change their own password at `/settings/password`.
+
+Token properties:
+- 24-hour expiry
+- One active token per user (issuing a new one atomically invalidates previous tokens)
+- Hashed with HMAC-SHA256 using `AUTH_SECRET` (raw token never stored)
+- Consumed atomically with race-condition protection via `updateMany` with `usedAt: null` guard
+
+If email delivery fails during invite or reset, the issued token is rolled back and any previously active tokens are restored when safe to do so.
 
 ### Password Policy
 
-All passwords must meet these requirements:
+- Minimum 12 characters, maximum 128 characters
+- At least one uppercase letter, one lowercase letter, one number, and one symbol
+- The 128-character maximum prevents bcrypt CPU abuse (bcrypt truncates at 72 bytes but validating before hashing avoids unnecessary work)
 
-- Minimum 12 characters
-- At least one uppercase letter
-- At least one lowercase letter
-- At least one number
-- At least one symbol
+### Email System
 
-### Email Normalization
+Three operational modes:
 
-Emails are normalized to lowercase on user creation and login to prevent duplicate accounts from case variation.
+| Mode | When | Behavior |
+| --- | --- | --- |
+| **Test** | `NODE_ENV=test` or `VITEST=true` | Captures to in-memory outbox (no real sends) |
+| **Development** | SMTP not configured | Logs redacted console preview (tokens/passwords never shown) |
+| **Production** | SMTP configured | Sends via nodemailer SMTP transport |
+
+### Rate Limiting
+
+Two tiers:
+
+1. **Cloudflare** (recommended primary): Proxy-level rate limiting per IP.
+2. **Application-level** (defense-in-depth): Upstash Redis in production, in-memory fallback in dev.
+
+Application rate limits:
+
+| Scope | Limit | Window |
+| --- | --- | --- |
+| `/api/auth/*` | 10 | 1 min |
+| `POST\|PATCH\|DELETE /api/*` | 60 | 1 min |
+| `GET /api/*` | 300 | 1 min |
+| `/api/upload/*` | 20 | 1 min |
+| Password setup (validate) | 30 | 15 min |
+| Password setup (submit) | 10 | 15 min |
+| Resend invite (per admin) | 5 | 15 min |
+| Password reset (per admin) | 5 | 15 min |
+
+### Security Headers
+
+Configured in `next.config.ts`:
+
+- `Content-Security-Policy` with script/style/resource origin restrictions
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+- `Strict-Transport-Security` (production only)
+- `X-Powered-By` removed
+
+### CSRF Posture
+
+- Auth.js session cookies: host-only, `httpOnly`, `SameSite=Lax`, `secure` on HTTPS
+- Auth.js CSRF token validation on auth POST actions
+- Application mutations use only `POST`, `PATCH`, `DELETE` (no `GET` writes)
+- No additional custom CSRF layer needed at this stage
+
+### Resume Storage
+
+- Validated for file type (pdf, doc, docx, txt, rtf) and size (max 10MB) before accepting
+- Stored in S3-compatible bucket under deterministic keys (`resumes/{uuid}.{ext}`)
+- Downloads use signed URLs with short TTLs
+- `ADMIN`/`RECRUITER` only; `VIEWER` receives 403
+- Orphaned resumes cleaned up by cron endpoint (7-day grace period)
+
+### Audit Logging
+
+- Every write operation creates an `AuditLog` entry with before/after JSON snapshots
+- Client IP extracted from trusted proxy headers (cf-connecting-ip > x-vercel-forwarded-for > x-real-ip > x-forwarded-for)
+- IP addresses sanitized (truncated to 45 chars, non-printable chars stripped)
+- If the acting user is deleted before the log is written, the entry is retried with `userId: null`
 
 ### Known Limitation
 
-Deactivating a user does not invalidate their active JWT session (up to 4-hour TTL). Admins should be aware that deactivated users may retain access until their session expires. This is accepted for v1.
+Deactivating a user does not invalidate their active JWT session (up to 4-hour TTL). Sessions expire naturally. This is accepted for v1.
 
-### Environment Variables for Seeding
+## API Surface
 
-The seed script creates a single admin account from environment variables:
+### Jobs
 
-| Variable | Description |
-| --- | --- |
-| `ADMIN_NAME` | Admin display name (1-100 chars) |
-| `ADMIN_EMAIL` | Admin email (must be valid) |
-| `ADMIN_PASSWORD` | Admin password (must meet policy) |
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/jobs` | GET | List jobs (pagination, search, sort, filter by status/department/health/critical) |
+| `/api/jobs` | POST | Create job |
+| `/api/jobs/:id` | GET | Get job by ID |
+| `/api/jobs/:id` | PATCH | Update job |
+| `/api/jobs/:id` | DELETE | Delete job |
 
-### User Management API
+### Candidates
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/candidates` | GET | List candidates (pagination, search, sort) |
+| `/api/candidates` | POST | Create candidate (optionally attach to job) |
+| `/api/candidates/:id` | GET | Get candidate by ID |
+| `/api/candidates/:id` | PATCH | Update candidate |
+| `/api/candidates/:id` | DELETE | Delete candidate (removes resume from storage) |
+
+### Applications
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/applications` | POST | Create application (candidate + job) |
+| `/api/applications/:id` | PATCH | Update stage, recruiter, notes |
+| `/api/applications/:id` | DELETE | Delete application |
+
+### Users (Admin -- requires MANAGE_USERS permission)
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
 | `/api/users` | GET | List users (pagination, search, active filter) |
-| `/api/users` | POST | Create user with temp password |
-| `/api/users/:id` | PATCH | Update user name, role, or active status |
-| `/api/users/:id/reset-password` | POST | Reset password with new temp password |
-| `/api/users/me` | PATCH | Self-service name update |
-| `/api/users/me/password` | POST | Self-service password change |
+| `/api/users` | POST | Create user and send onboarding invite email |
+| `/api/users/:id` | PATCH | Update name, role, or active status |
+| `/api/users/:id` | DELETE | Permanently delete user (with last-admin guard) |
+| `/api/users/:id/resend-invite` | POST | Resend onboarding invite (rate limited) |
+| `/api/users/:id/reset-password` | POST | Send password reset email (rate limited) |
 
-All user management endpoints require `ADMIN` role (403 for others). Self-service endpoints require authentication only.
+### Users (Self-Service)
 
-## Data Flow Overview
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/users/me` | PATCH | Update own name |
+| `/api/users/me/password` | POST | Change own password |
 
-The standard lifecycle is intentionally simple and fully auditable:
+### Password Setup (Public)
 
-1. A job is created with owner, priority, target dates, and status.
-2. A candidate is added or imported, with resume metadata and contact details.
-3. An application connects the candidate to a job and sets the initial stage.
-4. The application progresses through stages until hire, rejection, or withdrawal.
-5. Dashboard surfaces aggregate signals and critical pipeline risks.
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/password-setup` | GET | Validate token (returns masked email, rate limited) |
+| `/api/password-setup` | POST | Consume token and set password (rate limited) |
 
-Every write action is recorded in `AuditLog` to provide traceability.
+### Other
 
-## Resume Storage & Security Model
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/dashboard/stats` | GET | Dashboard KPIs and pipeline summary |
+| `/api/upload/resume` | POST | Get signed upload URL |
+| `/api/upload/resume/:key` | GET | Get signed download URL |
+| `/api/cron/cleanup-orphaned-resumes` | GET | Delete orphaned resume objects (auth: `CRON_SECRET`) |
+| `/api/test/email-outbox` | GET/DELETE | Test-only: inspect/clear captured emails (`NODE_ENV=test` only) |
 
-Resume handling is intentionally conservative:
+## Repository Structure
 
-1. All uploads are validated for file type and size before accepting.
-2. Files are stored in an S3-compatible bucket under a deterministic storage key.
-3. Downloads use signed URLs with short TTLs for controlled access.
-4. Resume metadata is stored in the candidate record for retrieval and audits.
+```
+hr-dashboard/
+├── prisma/                # Schema, seed, config
+├── src/
+│   ├── app/               # App Router pages and API routes
+│   │   ├── api/           # Route handlers
+│   │   ├── admin/users/   # User management page
+│   │   ├── set-password/  # Public token-based password setup page
+│   │   ├── settings/      # Profile and password self-service
+│   │   └── ...            # Dashboard, jobs, candidates pages
+│   ├── components/        # UI and layout components
+│   ├── hooks/             # TanStack Query and form hooks
+│   ├── lib/               # Auth, permissions, storage, email, rate-limit, validations
+│   └── test/              # Shared test utilities
+├── __tests__/
+│   ├── unit/              # 29 test files (Vitest)
+│   ├── integration/       # 17 test files (Vitest + real DB)
+│   └── e2e/               # Playwright browser tests
+├── docs/                  # Architecture and migration docs
+├── scripts/               # setup-minio.sh, verify-security-headers.mjs
+└── docker-compose*.yml    # Dev (MinIO) and test (PostgreSQL) services
+```
 
-This keeps storage decoupled from the app while enforcing controlled access at the edge.
+## Environment Variables
 
-## Architecture Overview
+Reference: [`.env.example`](./.env.example)
 
-The application follows a clean request flow:
+### Required
 
-1. Next.js App Router handles the request at `src/app`.
-2. Route handlers validate inputs and enforce permissions.
-3. Prisma models persist data in PostgreSQL.
-4. TanStack Query manages client state and cache invalidation.
-5. UI components render deterministic state surfaces for empty, loading, and error states.
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `AUTH_SECRET` | Auth.js secret (`openssl rand -base64 32`) |
+| `AUTH_TRUST_HOST` | `true` for VPS/proxy deployments |
+| `STORAGE_BUCKET` | S3 bucket name for resumes |
 
-This separation keeps data rules on the server and visual policy on the client.
+### Email (SMTP)
 
-## Design Principles
+| Variable | Description |
+| --- | --- |
+| `APP_URL` | Application base URL (used in email links) |
+| `SMTP_HOST` | SMTP server hostname |
+| `SMTP_PORT` | SMTP port (587 for STARTTLS, 465 for TLS) |
+| `SMTP_USER` | SMTP username |
+| `SMTP_PASS` | SMTP password |
+| `SENDER_EMAIL` | "From" email address |
+| `SENDER_NAME` | "From" display name |
 
-The UX is intentionally opinionated:
+When SMTP variables are not set, the email system falls back to console preview mode (development).
 
-1. Decision-first dashboards. Critical signals are surfaced before raw lists.
-2. Consistent list workspaces. Tables, filters, and pagination behave the same everywhere.
-3. Progressive disclosure. Only the right amount of detail is shown at each step.
-4. Recoverable mutations. Every destructive action has a clear escape hatch.
-5. Accessibility-by-default. Keyboard, focus, and aria patterns are first-class concerns.
+### Rate Limiting (Production)
 
-## Algorithms & Heuristics
+| Variable | Description |
+| --- | --- |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis auth token |
 
-The system uses a few lightweight heuristics to drive prioritization:
+When not set, rate limiting falls back to an in-memory store (not suitable for multi-instance production).
 
-1. Pipeline health classification based on stage velocity and role criticality.
-2. Critical jobs ranking based on priority, aging, and pipeline movement.
-3. Candidate recency signals to prevent stale follow-ups.
+### Storage (Optional)
 
-The intent is clarity and predictability rather than opaque machine learning.
+| Variable | Description |
+| --- | --- |
+| `STORAGE_REGION` | AWS region (default: `us-east-1`) |
+| `STORAGE_ENDPOINT` | Custom S3 endpoint (MinIO, DigitalOcean Spaces) |
+| `AWS_ACCESS_KEY_ID` | AWS credentials (omit for IAM roles) |
+| `AWS_SECRET_ACCESS_KEY` | AWS credentials (omit for IAM roles) |
 
-## Validation & Form Strategy
+### Seeding (Optional)
 
-Forms use a shared validation model to keep behavior consistent:
+| Variable | Description |
+| --- | --- |
+| `ADMIN_NAME` | Initial admin display name |
+| `ADMIN_EMAIL` | Initial admin email |
+| `ADMIN_PASSWORD` | Initial admin password (must meet password policy) |
 
-1. Zod validation with explicit error messaging.
-2. Standardized validation timing to reduce noisy feedback.
-3. Dirty-state guards to prevent accidental navigation loss.
-4. Explicit submit feedback and success transitions.
+## Getting Started
 
-## Performance & Perceived Speed
+```bash
+# Install dependencies
+bun install
 
-Performance is optimized for responsiveness and stability:
+# Set up environment
+cp .env.example .env
+# Edit .env with your database URL, auth secret, etc.
 
-1. Loading skeletons are used for predictable layout and reduced layout shift.
-2. keepPreviousData patterns avoid table jitter during refetches.
-3. Deferred loading indicators prevent flicker for fast operations.
+# Generate Prisma client and push schema
+bun run db:generate
+bun run db:push
+
+# Seed initial admin user (set ADMIN_* env vars first)
+bun run db:seed
+
+# Start development server
+bun run dev
+```
+
+### Local MinIO (Resume Storage)
+
+```bash
+# Start MinIO via Docker Compose
+docker compose up -d
+
+# Run setup script
+./scripts/setup-minio.sh
+```
+
+### Running Tests
+
+```bash
+# Unit tests
+bun run test
+
+# Integration tests (requires test database)
+bun run test:db:up        # Start test PostgreSQL on port 5433
+bun run test:db:push       # Push schema to test DB
+bun run test:integration
+
+# E2E tests
+bun run test:e2e:install   # Install Playwright browsers
+bun run test:e2e
+
+# Coverage
+bun run test:coverage
+bun run test:integration:coverage
+```
+
+### Available Scripts
+
+| Script | Description |
+| --- | --- |
+| `dev` | Start Next.js dev server |
+| `build` | Generate Prisma client, push schema, seed, build Next.js |
+| `start` | Start production server |
+| `lint` | Run ESLint |
+| `test` | Run unit tests |
+| `test:watch` | Unit tests in watch mode |
+| `test:coverage` | Unit tests with coverage |
+| `test:integration` | Run integration tests |
+| `test:integration:watch` | Integration tests in watch mode |
+| `test:integration:coverage` | Integration tests with coverage |
+| `test:e2e` | Run Playwright E2E tests |
+| `test:e2e:install` | Install Playwright browsers |
+| `test:db:up` | Start test PostgreSQL container |
+| `test:db:down` | Stop test PostgreSQL container |
+| `test:db:push` | Push Prisma schema to test DB |
+| `verify:headers` | Verify security headers on deployed URL |
+| `db:generate` | Generate Prisma client |
+| `db:push` | Push schema to database |
+| `db:migrate` | Run Prisma migrations |
+| `db:seed` | Seed database |
+| `db:studio` | Open Prisma Studio |
 
 ## Testing Strategy
 
-The test suite is structured to cover critical user flows:
+The test suite covers critical user flows across three tiers:
 
-1. Unit tests for data-table behaviors, form utilities, and mutations.
-2. Integration tests for Prisma and route handlers.
-3. E2E tests for candidate workflows, job creation, and stage transitions.
+- **Unit tests** (29 files): API route handlers, UI components, utility functions, validation schemas, rate limiting, email service, password policy
+- **Integration tests** (17 files): Prisma operations against a real PostgreSQL database, route handler integration, storage configuration, password setup flow
+- **E2E tests**: Browser-based tests for candidate workflows, job creation, stage transitions, and user management
 
-## Operational Concerns
-
-Operationally, this platform expects:
-
-1. Database migrations handled through Prisma.
-2. An object storage bucket for resumes with restricted access.
-3. Audit logs retained for compliance and review.
-
-## Limitations & Roadmap
-
-Current limitations and likely near-term expansions:
-
-1. Single-tenant only.
-2. No automated external sourcing integrations.
-3. Limited analytics beyond pipeline health.
-
-Potential roadmap items:
-
-1. Multi-tenant support.
-2. Advanced reporting and SLA alerts.
-3. Bulk import workflows and CRM sync.
+Test infrastructure:
+- Main database: port 5432
+- Test database: port 5433 (separate Docker container)
+- Integration tests use `setupIntegrationTests()` for database lifecycle
 
 ## Documentation
 
 - [TanStack Migration Blueprint](./docs/TANSTACK_MIGRATION_BLUEPRINT.md)
 - [TanStack Migration Playbook](./docs/TANSTACK_MIGRATION_PLAYBOOK.md)
 - [TanStack Acceptance Matrix](./docs/TANSTACK_ACCEPTANCE_MATRIX.md)
+- [Visual System Contract](./docs/VISUAL_SYSTEM_CONTRACT.md)
+- [List Workspace Contract](./docs/LIST_WORKSPACE_CONTRACT.md)
 
 ## License
 

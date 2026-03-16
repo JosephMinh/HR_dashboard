@@ -360,15 +360,10 @@ function ResetPasswordButton({
   userName: string
   onReset: (result: { success: boolean; error?: string }) => void
 }) {
-  const [resetting, setResetting] = useState(false)
+  const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleReset() {
-    if (!confirm(`Reset password for ${userName}? A password reset email will be sent to their email address.`)) {
-      return
-    }
-
-    setResetting(true)
+  async function handleConfirm() {
     setError(null)
 
     try {
@@ -382,15 +377,16 @@ function ResetPasswordButton({
         const errMsg = data.error || 'Failed to reset password'
         setError(errMsg)
         onReset({ success: false, error: errMsg })
+        setOpen(false)
         return
       }
 
+      setOpen(false)
       onReset({ success: true })
     } catch {
       setError('An unexpected error occurred')
       onReset({ success: false, error: 'An unexpected error occurred' })
-    } finally {
-      setResetting(false)
+      setOpen(false)
     }
   }
 
@@ -399,13 +395,22 @@ function ResetPasswordButton({
       <Button
         variant="outline"
         size="sm"
-        onClick={handleReset}
-        disabled={resetting}
+        onClick={() => setOpen(true)}
       >
         <RotateCcw className="mr-1 h-3 w-3" />
-        {resetting ? 'Sending...' : 'Reset PW'}
+        Reset PW
       </Button>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      <ConfirmDialog
+        open={open}
+        variant="warning"
+        title="Reset password?"
+        message={`Reset password for ${userName}? A password reset email will be sent to their email address.`}
+        confirmLabel="Reset Password"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirm}
+        onCancel={() => setOpen(false)}
+      />
     </div>
   )
 }
@@ -419,15 +424,10 @@ function ResendInviteButton({
   userName: string
   onResult: (result: { success: boolean; error?: string }) => void
 }) {
-  const [sending, setSending] = useState(false)
+  const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleResend() {
-    if (!confirm(`Resend onboarding invite to ${userName}?`)) {
-      return
-    }
-
-    setSending(true)
+  async function handleConfirm() {
     setError(null)
 
     try {
@@ -441,15 +441,16 @@ function ResendInviteButton({
         const errMsg = data.error || 'Failed to resend invite'
         setError(errMsg)
         onResult({ success: false, error: errMsg })
+        setOpen(false)
         return
       }
 
+      setOpen(false)
       onResult({ success: true })
     } catch {
       setError('An unexpected error occurred')
       onResult({ success: false, error: 'An unexpected error occurred' })
-    } finally {
-      setSending(false)
+      setOpen(false)
     }
   }
 
@@ -458,14 +459,22 @@ function ResendInviteButton({
       <Button
         variant="ghost"
         size="sm"
-        onClick={handleResend}
-        disabled={sending}
+        onClick={() => setOpen(true)}
         className="text-muted-foreground"
       >
         <Mail className="mr-1 h-3 w-3" />
-        {sending ? 'Sending...' : 'Resend Invite'}
+        Resend Invite
       </Button>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      <ConfirmDialog
+        open={open}
+        title="Resend invite?"
+        message={`Resend the onboarding invite email to ${userName}? This will issue a fresh setup link and invalidate any previous ones.`}
+        confirmLabel="Resend Invite"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirm}
+        onCancel={() => setOpen(false)}
+      />
     </div>
   )
 }
