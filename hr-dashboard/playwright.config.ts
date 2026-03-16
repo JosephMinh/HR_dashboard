@@ -42,7 +42,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `DATABASE_URL="${testDatabaseUrl}" npm run dev -- --hostname 127.0.0.1 --port ${port}`,
+    command: `APP_URL="${baseURL}" VITEST=true DATABASE_URL="${testDatabaseUrl}" npm run dev -- --hostname 127.0.0.1 --port ${port}`,
     url: baseURL,
     // Reusing an existing dev server can point tests at the wrong database.
     reuseExistingServer: false,
