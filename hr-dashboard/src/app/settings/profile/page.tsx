@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout'
@@ -8,12 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
 export default function ProfilePage() {
-  const { data: session, update } = useSession()
+  const { data: session, status, update } = useSession()
   const router = useRouter()
   const [name, setName] = useState(session?.user?.name ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/login')
+    }
+  }, [router, status])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -43,8 +49,7 @@ export default function ProfilePage() {
     }
   }
 
-  if (!session?.user) {
-    router.push('/login')
+  if (status === 'loading' || !session?.user) {
     return null
   }
 

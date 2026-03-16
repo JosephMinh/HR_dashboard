@@ -534,7 +534,7 @@ function roleBadgeVariant(role: string) {
 }
 
 export default function AdminUsersPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
 
   const [users, setUsers] = useState<User[]>([])
@@ -578,13 +578,18 @@ export default function AdminUsersPage() {
   }, [page, activeFilter, search])
 
   useEffect(() => {
-    if (session?.user && canManageUsers(session.user.role)) {
+    if (status === 'authenticated' && session?.user && canManageUsers(session.user.role)) {
       fetchUsers()
     }
-  }, [fetchUsers, session])
+  }, [fetchUsers, session, status])
 
-  if (!session?.user) {
-    router.push('/login')
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/login')
+    }
+  }, [router, status])
+
+  if (status === 'loading' || !session?.user) {
     return null
   }
 

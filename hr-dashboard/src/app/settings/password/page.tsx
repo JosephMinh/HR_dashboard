@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout'
@@ -70,13 +70,19 @@ function PolicyHints({ password }: { password: string }) {
 }
 
 export default function ChangePasswordPage() {
-  const { data: session, update } = useSession()
+  const { data: session, status, update } = useSession()
   const router = useRouter()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/login')
+    }
+  }, [router, status])
 
   const mustChange = session?.user?.mustChangePassword === true
 
@@ -122,8 +128,7 @@ export default function ChangePasswordPage() {
     }
   }
 
-  if (!session?.user) {
-    router.push('/login')
+  if (status === 'loading' || !session?.user) {
     return null
   }
 
