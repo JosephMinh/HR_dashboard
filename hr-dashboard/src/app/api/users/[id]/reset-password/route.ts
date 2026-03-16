@@ -21,6 +21,7 @@ async function rollbackIssuedToken(params: {
   userId: string
   issuedToken: string
   previousTokenIds: string[]
+  restorePreviousTokens?: boolean
 }) {
   const rollbackAt = new Date()
 
@@ -36,7 +37,7 @@ async function rollbackIssuedToken(params: {
       },
     })
 
-    if (params.previousTokenIds.length === 0) {
+    if (!params.restorePreviousTokens || params.previousTokenIds.length === 0) {
       return
     }
 
@@ -134,10 +135,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   })
 
   if (!emailResult.success) {
+    const currentUser = await prisma.user.findUnique({
+      where: { id },
+      select: { active: true },
+    })
+
     await rollbackIssuedToken({
       userId: id,
       issuedToken: passwordSetup.token,
       previousTokenIds,
+      restorePreviousTokens: !!currentUser && currentUser.active,
     })
     // Email failed — leave existing credentials untouched
     console.error(`[reset-password] Email delivery failed for user ${id}:`, emailResult.error)
@@ -159,6 +166,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   })
 
   if (updateResult.count === 0) {
+    await rollbackIssuedToken({
+      userId: id,
+      issuedToken: passwordSetup.token,
+      previousTokenIds: [],
+    })
     return NextResponse.json(
       { error: 'User was deactivated during the reset process' },
       { status: 409 }

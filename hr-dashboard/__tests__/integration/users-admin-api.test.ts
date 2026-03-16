@@ -16,11 +16,23 @@ import {
   setupIntegrationTests,
   createTestFactories,
 } from "@/test/setup-integration"
+import {
+  hashSetPasswordToken,
+  issueSetPasswordToken,
+  validateSetPasswordToken,
+} from "@/lib/password-setup-tokens"
 
 const authMock = vi.fn()
+const { sendEmailMock } = vi.hoisted(() => ({
+  sendEmailMock: vi.fn(),
+}))
 
 vi.mock("@/lib/auth", () => ({
   auth: authMock,
+}))
+
+vi.mock("@/lib/email", () => ({
+  sendEmail: sendEmailMock,
 }))
 
 // Mock rate limiting to avoid Redis dependency in tests
@@ -35,6 +47,11 @@ describe("Integration: Admin User Management API", () => {
 
   beforeEach(() => {
     authMock.mockResolvedValue(createMockSession({ role: "ADMIN" }))
+    sendEmailMock.mockReset()
+    sendEmailMock.mockResolvedValue({
+      success: true,
+      messageId: "test-message-id",
+    })
   })
 
   // =========================================================================
@@ -217,6 +234,27 @@ describe("Integration: Admin User Management API", () => {
       expect(data).not.toHaveProperty("passwordHash")
       expect(data.invite).toBeDefined()
       expect(data.invite.status).toBe("sent")
+      expect(data.invite.setupUrl).toBeUndefined()
+    })
+
+    it("returns the manual setup link only when invite delivery fails", async () => {
+      sendEmailMock.mockResolvedValueOnce({
+        success: false,
+        error: "SMTP unavailable",
+      })
+
+      const { POST } = await import("@/app/api/users/route")
+      const response = await POST(
+        new Request("http://localhost/api/users", {
+          method: "POST",
+          body: JSON.stringify({ name: "Manual Share", email: "manual@test.com", role: "VIEWER" }),
+        }) as never,
+      )
+
+      expect(response.status).toBe(201)
+      const data = await response.json()
+      expect(data.invite.status).toBe("failed")
+      expect(data.invite.error).toContain("could not be delivered")
       expect(typeof data.invite.setupUrl).toBe("string")
       expect(data.invite.setupUrl).toContain("/set-password?token=")
     })
@@ -552,6 +590,57 @@ describe("Integration: Admin User Management API", () => {
       expect(updated?.mustChangePassword).toBe(true)
     })
 
+    it("preserves the prior active token and current password when email delivery fails", async () => {
+      const prisma = getTestPrisma()
+      const originalPasswordHash = await hash("CurrentPassword123!", 10)
+      const user = await factories.createUser({ email: "target@test.com" })
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: originalPasswordHash,
+          mustChangePassword: false,
+        },
+      })
+
+      const existingToken = await issueSetPasswordToken({ userId: user.id })
+      sendEmailMock.mockResolvedValueOnce({
+        success: false,
+        error: "SMTP unavailable",
+      })
+
+      const { POST } = await import("@/app/api/users/[id]/reset-password/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/reset-password", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+
+      expect(response.status).toBe(502)
+      const data = await response.json()
+      expect(data.error).toContain("existing password remains unchanged")
+
+      const updatedUser = await prisma.user.findUnique({ where: { id: user.id } })
+      expect(updatedUser?.passwordHash).toBe(originalPasswordHash)
+      expect(updatedUser?.mustChangePassword).toBe(false)
+
+      const existingTokenState = await validateSetPasswordToken(existingToken.token)
+      expect(existingTokenState).toMatchObject({
+        valid: true,
+        userId: user.id,
+      })
+
+      const activeTokens = await prisma.setPasswordToken.findMany({
+        where: {
+          userId: user.id,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      })
+      expect(activeTokens).toHaveLength(1)
+      expect(activeTokens[0]?.tokenHash).toBe(hashSetPasswordToken(existingToken.token))
+    })
+
     it("returns 400 for invalid UUID", async () => {
       const { POST } = await import("@/app/api/users/[id]/reset-password/route")
       const response = await POST(
@@ -716,6 +805,49 @@ describe("Integration: Admin User Management API", () => {
       })
       expect(log).not.toBeNull()
       expect(log?.entityType).toBe("User")
+    })
+
+    it("restores the previous invite token when resend email delivery fails", async () => {
+      const prisma = getTestPrisma()
+      const user = await factories.createUser({ email: "pending@test.com" })
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { mustChangePassword: true },
+      })
+
+      const existingToken = await issueSetPasswordToken({ userId: user.id })
+      sendEmailMock.mockResolvedValueOnce({
+        success: false,
+        error: "SMTP unavailable",
+      })
+
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+
+      expect(response.status).toBe(502)
+      const data = await response.json()
+      expect(data.error).toContain("could not be sent")
+
+      const existingTokenState = await validateSetPasswordToken(existingToken.token)
+      expect(existingTokenState).toMatchObject({
+        valid: true,
+        userId: user.id,
+      })
+
+      const activeTokens = await prisma.setPasswordToken.findMany({
+        where: {
+          userId: user.id,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      })
+      expect(activeTokens).toHaveLength(1)
+      expect(activeTokens[0]?.tokenHash).toBe(hashSetPasswordToken(existingToken.token))
     })
   })
 

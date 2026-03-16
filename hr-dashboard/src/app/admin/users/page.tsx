@@ -583,7 +583,7 @@ export default function AdminUsersPage() {
 
   function handleCreated(_user: User, invite: { status: string; setupUrl?: string; error?: string }) {
     if (invite.status === 'sent') {
-      setStatusBanner({ type: 'success', message: 'User created. An onboarding invite email has been sent.', setupUrl: invite.setupUrl })
+      setStatusBanner({ type: 'success', message: 'User created. An onboarding invite email has been sent.' })
     } else {
       setStatusBanner({ type: 'warning', message: 'User created, but the invite email could not be sent. Share the setup link manually.', setupUrl: invite.setupUrl })
     }

@@ -18,6 +18,7 @@ async function rollbackIssuedToken(params: {
   userId: string
   issuedToken: string
   previousTokenIds: string[]
+  restorePreviousTokens?: boolean
 }) {
   const rollbackAt = new Date()
 
@@ -33,7 +34,7 @@ async function rollbackIssuedToken(params: {
       },
     })
 
-    if (params.previousTokenIds.length === 0) {
+    if (!params.restorePreviousTokens || params.previousTokenIds.length === 0) {
       return
     }
 
@@ -137,15 +138,62 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   })
 
   if (!emailResult.success) {
+    const currentUser = await prisma.user.findUnique({
+      where: { id },
+      select: { active: true, mustChangePassword: true },
+    })
+
     await rollbackIssuedToken({
       userId: id,
       issuedToken: passwordSetup.token,
       previousTokenIds,
+      restorePreviousTokens: !!currentUser && currentUser.active && currentUser.mustChangePassword,
     })
     console.error(`[resend-invite] Email delivery failed for user ${id}:`, emailResult.error)
     return NextResponse.json(
       { error: 'Invite email could not be sent. Please try again later.' },
       { status: 502 }
+    )
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id },
+    select: { active: true, mustChangePassword: true },
+  })
+
+  if (!currentUser) {
+    await rollbackIssuedToken({
+      userId: id,
+      issuedToken: passwordSetup.token,
+      previousTokenIds: [],
+    })
+    return NextResponse.json(
+      { error: 'User no longer exists' },
+      { status: 409 }
+    )
+  }
+
+  if (!currentUser.active) {
+    await rollbackIssuedToken({
+      userId: id,
+      issuedToken: passwordSetup.token,
+      previousTokenIds: [],
+    })
+    return NextResponse.json(
+      { error: 'User was deactivated during invite resend' },
+      { status: 409 }
+    )
+  }
+
+  if (!currentUser.mustChangePassword) {
+    await rollbackIssuedToken({
+      userId: id,
+      issuedToken: passwordSetup.token,
+      previousTokenIds: [],
+    })
+    return NextResponse.json(
+      { error: 'User completed onboarding during invite resend' },
+      { status: 409 }
     )
   }
 
