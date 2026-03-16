@@ -157,3 +157,98 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   return NextResponse.json(updated)
 }
+
+/**
+ * DELETE /api/users/:id — permanently delete a user.
+ * Requires MANAGE_USERS permission.
+ * Safeguards: no self-delete, no deleting last active admin.
+ * Delete + audit log run in a single transaction.
+ */
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const session = await auth()
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!canManageUsers(session.user.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { id } = await params
+
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 })
+  }
+
+  if (id === session.user.id) {
+    return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 403 })
+  }
+
+  const ipAddress = getClientIp(request)
+
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.user.findUnique({
+      where: { id },
+      select: USER_SELECT,
+    })
+    if (!existing) {
+      return { kind: 'not_found' as const }
+    }
+
+    if (existing.role === 'ADMIN' && existing.active) {
+      const activeAdminCount = await tx.user.count({
+        where: {
+          role: 'ADMIN',
+          active: true,
+          NOT: { id },
+        },
+      })
+
+      if (activeAdminCount === 0) {
+        return { kind: 'last_active_admin' as const }
+      }
+    }
+
+    // Verify the acting user exists in DB before referencing in audit log
+    const auditUserId = isValidUUID(session.user.id)
+      ? (await tx.user.findUnique({
+          where: { id: session.user.id },
+          select: { id: true },
+        }))?.id ?? null
+      : null
+
+    const deleted = await tx.user.delete({
+      where: { id },
+      select: USER_SELECT,
+    })
+
+    await tx.auditLog.create({
+      data: {
+        userId: auditUserId,
+        action: 'USER_DELETED',
+        entityType: 'User',
+        entityId: id,
+        beforeJson: {
+          id: deleted.id,
+          name: deleted.name,
+          email: deleted.email,
+          role: deleted.role,
+          active: deleted.active,
+          mustChangePassword: deleted.mustChangePassword,
+        },
+        ipAddress: ipAddress ?? undefined,
+      },
+    })
+
+    return { kind: 'deleted' as const }
+  })
+
+  if (result.kind === 'not_found') {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  }
+
+  if (result.kind === 'last_active_admin') {
+    return NextResponse.json({ error: 'Cannot delete the last active admin' }, { status: 409 })
+  }
+
+  return NextResponse.json({ success: true })
+}
