@@ -9,7 +9,7 @@
 
 import { test, expect } from "./fixtures"
 import { hash } from "bcryptjs"
-import { getTestPassword } from "./utils/auth"
+import { getTestPassword, performLogin } from "./utils/auth"
 
 const USERS_URL = "/admin/users"
 
@@ -93,10 +93,91 @@ test.describe("Admin Delete User", () => {
 
       // The user should no longer appear in the list
       await expect(userRow).not.toBeVisible({ timeout: 10000 })
+
+      const deletedUser = await prisma.user.findUnique({
+        where: { id: testUser.id },
+      })
+      expect(deletedUser).toBeNull()
     } finally {
       // Cleanup: ensure user is removed even if test fails mid-way
       await prisma.user
         .delete({ where: { id: testUser.id } })
+        .catch(() => {})
+    }
+  })
+
+  test("deleting a user revokes their existing session and blocks future login", async ({
+    adminPage,
+    browser,
+    prisma,
+  }) => {
+    const password = getTestPassword()
+    const passwordHash = await hash(password, 10)
+    const deletedUserEmail = `e2e-revoke-${Date.now()}@hrtest.local`
+    const deletedUser = await prisma.user.create({
+      data: {
+        name: "E2E Revoked User",
+        email: deletedUserEmail,
+        passwordHash,
+        role: "VIEWER",
+        active: true,
+      },
+    })
+
+    const deletedUserContext = await browser.newContext()
+    const deletedUserPage = await deletedUserContext.newPage()
+
+    try {
+      await adminPage.goto(USERS_URL, { waitUntil: "domcontentloaded" })
+      await adminPage.waitForSelector("table tbody tr", { state: "visible" })
+      const appOrigin = new URL(adminPage.url()).origin
+
+      await performLogin(
+        deletedUserPage,
+        {
+          email: deletedUserEmail,
+          password,
+          name: "E2E Revoked User",
+          role: "VIEWER",
+        },
+        appOrigin
+      )
+      await deletedUserPage.goto(`${appOrigin}/`, { waitUntil: "domcontentloaded" })
+      await expect(
+        deletedUserPage.getByRole("button", { name: /open user menu/i })
+      ).toContainText("E2E Revoked User")
+
+      const userRow = adminPage.locator("tr", {
+        hasText: "E2E Revoked User",
+      })
+      await expect(userRow).toBeVisible()
+
+      await userRow
+        .locator('button[aria-label="Delete user E2E Revoked User"]')
+        .click()
+
+      const dialog = adminPage.locator('[role="dialog"]')
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole("button", { name: "Delete" }).click()
+      await expect(dialog).not.toBeVisible({ timeout: 10000 })
+      await expect(userRow).not.toBeVisible({ timeout: 10000 })
+
+      expect(
+        await prisma.user.findUnique({ where: { id: deletedUser.id } })
+      ).toBeNull()
+
+      await deletedUserPage.goto(`${appOrigin}/`, { waitUntil: "domcontentloaded" })
+      await expect(deletedUserPage).toHaveURL(/\/login/)
+
+      await deletedUserPage.fill("#email", deletedUserEmail)
+      await deletedUserPage.fill("#password", password)
+      await deletedUserPage.click('button[type="submit"]')
+      await expect(deletedUserPage.getByText("Invalid email or password")).toBeVisible()
+      await expect(deletedUserPage).toHaveURL(/\/login/)
+    } finally {
+      await deletedUserContext.close()
+      await prisma.user
+        .delete({ where: { id: deletedUser.id } })
         .catch(() => {})
     }
   })

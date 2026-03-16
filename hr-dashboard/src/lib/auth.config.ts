@@ -46,27 +46,6 @@ export const authConfig = {
 
       return true
     },
-    jwt({ token, user, trigger }) {
-      if (user && user.id) {
-        token.id = user.id
-        token.role = user.role
-        token.mustChangePassword = user.mustChangePassword ?? false
-      }
-      // On session update (e.g. after password change), refresh from trigger data
-      if (trigger === 'update') {
-        // mustChangePassword is refreshed via the session update call
-        token.mustChangePassword = false
-      }
-      return token
-    },
-    session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string
-        session.user.role = token.role as 'ADMIN' | 'RECRUITER' | 'VIEWER'
-        session.user.mustChangePassword = token.mustChangePassword as boolean
-      }
-      return session
-    },
   },
   providers: [], // Providers added in auth.ts
   session: {

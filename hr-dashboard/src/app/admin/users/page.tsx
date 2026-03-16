@@ -561,7 +561,7 @@ export default function AdminUsersPage() {
         params.set('search', search.trim())
       }
 
-      const res = await fetch(`/api/users?${params}`)
+      const res = await fetch(`/api/users?${params}`, { cache: 'no-store' })
       if (res.ok) {
         const data: UsersResponse = await res.json()
         setUsers(data.users)

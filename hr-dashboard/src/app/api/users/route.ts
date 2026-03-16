@@ -15,6 +15,9 @@ import { UserRole } from '@/generated/prisma/client'
 import type { Prisma } from '@/generated/prisma/client'
 
 const VALID_ROLES = Object.values(UserRole) as string[]
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' }
+
+export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/users — list users with pagination + search.
@@ -100,13 +103,16 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  return NextResponse.json({
-    users,
-    total,
-    page,
-    pageSize,
-    totalPages,
-  })
+  return NextResponse.json(
+    {
+      users,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    },
+    { headers: NO_STORE_HEADERS }
+  )
 }
 
 /**
