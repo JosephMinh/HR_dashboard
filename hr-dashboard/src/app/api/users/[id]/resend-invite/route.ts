@@ -7,7 +7,6 @@ import { buildInviteEmail } from '@/lib/email-templates'
 import { buildSetPasswordUrl, hashSetPasswordToken, issueSetPasswordToken } from '@/lib/password-setup-tokens'
 import { prisma } from '@/lib/prisma'
 import { canManageUsers } from '@/lib/permissions'
-import { isValidUUID } from '@/lib/validations'
 import { enforceRouteRateLimit } from '@/lib/rate-limit'
 
 interface RouteParams {
@@ -78,10 +77,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   const { id } = await params
-
-  if (!isValidUUID(id)) {
-    return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 })
-  }
 
   const user = await prisma.user.findUnique({
     where: { id },

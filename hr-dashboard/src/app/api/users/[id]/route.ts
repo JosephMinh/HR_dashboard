@@ -4,7 +4,6 @@ import { auth } from '@/lib/auth'
 import { getClientIp, logAuditUpdate } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { canManageUsers } from '@/lib/permissions'
-import { isValidUUID } from '@/lib/validations'
 import { UserRole } from '@/generated/prisma/client'
 
 const VALID_ROLES = Object.values(UserRole) as string[]
@@ -39,10 +38,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const { id } = await params
-
-  if (!isValidUUID(id)) {
-    return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 })
-  }
 
   const existing = await prisma.user.findUnique({
     where: { id },
@@ -210,10 +205,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
   const { id } = await params
 
-  if (!isValidUUID(id)) {
-    return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 })
-  }
-
   if (id === session.user.id) {
     return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 403 })
   }
@@ -244,12 +235,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify the acting user exists in DB before referencing in audit log
-    const auditUserId = isValidUUID(session.user.id)
-      ? (await tx.user.findUnique({
-          where: { id: session.user.id },
-          select: { id: true },
-        }))?.id ?? null
-      : null
+    const auditUserId = (await tx.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true },
+    }))?.id ?? null
 
     const deleted = await tx.user.delete({
       where: { id },

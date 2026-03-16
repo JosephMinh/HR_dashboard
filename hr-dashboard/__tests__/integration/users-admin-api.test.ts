@@ -476,7 +476,7 @@ describe("Integration: Admin User Management API", () => {
       expect(data.error).toContain("last admin")
     })
 
-    it("returns 400 for invalid UUID", async () => {
+    it("returns 404 for unknown legacy string user ids", async () => {
       const { PATCH } = await import("@/app/api/users/[id]/route")
       const response = await PATCH(
         new Request("http://localhost/api/users/seed-user-admin", {
@@ -485,9 +485,34 @@ describe("Integration: Admin User Management API", () => {
         }) as never,
         { params: Promise.resolve({ id: "seed-user-admin" }) },
       )
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(404)
       const data = await response.json()
-      expect(data.error).toContain("Invalid user ID")
+      expect(data.error).toContain("User not found")
+    })
+
+    it("updates legacy string-id users", async () => {
+      const prisma = getTestPrisma()
+      const user = await prisma.user.create({
+        data: {
+          id: "seed-user-admin",
+          name: "Legacy Admin",
+          email: "legacy-admin@test.com",
+          role: "ADMIN",
+          passwordHash: "x",
+        },
+      })
+
+      const { PATCH } = await import("@/app/api/users/[id]/route")
+      const response = await PATCH(
+        new Request("http://localhost/api/users/" + user.id, {
+          method: "PATCH",
+          body: JSON.stringify({ name: "Updated Legacy Admin" }),
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.name).toBe("Updated Legacy Admin")
     })
 
     it("returns 400 when no fields provided", async () => {
@@ -641,7 +666,7 @@ describe("Integration: Admin User Management API", () => {
       expect(activeTokens[0]?.tokenHash).toBe(hashSetPasswordToken(existingToken.token))
     })
 
-    it("returns 400 for invalid UUID", async () => {
+    it("returns 404 for unknown legacy string user ids", async () => {
       const { POST } = await import("@/app/api/users/[id]/reset-password/route")
       const response = await POST(
         new Request("http://localhost/api/users/seed-user-admin/reset-password", {
@@ -649,9 +674,34 @@ describe("Integration: Admin User Management API", () => {
         }) as never,
         { params: Promise.resolve({ id: "seed-user-admin" }) },
       )
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(404)
       const data = await response.json()
-      expect(data.error).toContain("Invalid user ID")
+      expect(data.error).toContain("User not found")
+    })
+
+    it("resets passwords for legacy string-id users", async () => {
+      const prisma = getTestPrisma()
+      const user = await prisma.user.create({
+        data: {
+          id: "seed-user-recruiter",
+          name: "Legacy Recruiter",
+          email: "legacy-recruiter@test.com",
+          role: "RECRUITER",
+          passwordHash: "existing-password",
+          active: true,
+        },
+      })
+
+      const { POST } = await import("@/app/api/users/[id]/reset-password/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/reset-password", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.success).toBe(true)
     })
 
     it("returns 404 for non-existent user", async () => {
@@ -715,7 +765,7 @@ describe("Integration: Admin User Management API", () => {
       expect(response.status).toBe(403)
     })
 
-    it("returns 400 for invalid UUID", async () => {
+    it("returns 404 for unknown legacy string user ids", async () => {
       const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
       const response = await POST(
         new Request("http://localhost/api/users/not-a-uuid/resend-invite", {
@@ -723,9 +773,9 @@ describe("Integration: Admin User Management API", () => {
         }) as never,
         { params: Promise.resolve({ id: "not-a-uuid" }) },
       )
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(404)
       const data = await response.json()
-      expect(data.error).toContain("Invalid user ID")
+      expect(data.error).toContain("User not found")
     })
 
     it("returns 404 for non-existent user", async () => {
@@ -805,6 +855,32 @@ describe("Integration: Admin User Management API", () => {
       })
       expect(log).not.toBeNull()
       expect(log?.entityType).toBe("User")
+    })
+
+    it("resends invites for legacy string-id pending users", async () => {
+      const prisma = getTestPrisma()
+      const user = await prisma.user.create({
+        data: {
+          id: "seed-user-viewer",
+          name: "Legacy Viewer",
+          email: "legacy-viewer@test.com",
+          role: "VIEWER",
+          passwordHash: "existing-password",
+          active: true,
+          mustChangePassword: true,
+        },
+      })
+
+      const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
+      const response = await POST(
+        new Request("http://localhost/api/users/" + user.id + "/resend-invite", {
+          method: "POST",
+        }) as never,
+        { params: Promise.resolve({ id: user.id }) },
+      )
+      expect(response.status).toBe(200)
+      const data = await response.json()
+      expect(data.success).toBe(true)
     })
 
     it("restores the previous invite token when resend email delivery fails", async () => {
@@ -897,7 +973,7 @@ describe("Integration: Admin User Management API", () => {
       expect(data.error).toContain("Cannot delete yourself")
     })
 
-    it("returns 400 for invalid UUID", async () => {
+    it("returns 404 for unknown legacy string user ids", async () => {
       const { DELETE } = await import("@/app/api/users/[id]/route")
       const response = await DELETE(
         new Request("http://localhost/api/users/not-a-uuid", {
@@ -905,7 +981,7 @@ describe("Integration: Admin User Management API", () => {
         }) as never,
         { params: Promise.resolve({ id: "not-a-uuid" }) },
       )
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(404)
     })
 
     it("returns 404 for non-existent user", async () => {
@@ -971,6 +1047,34 @@ describe("Integration: Admin User Management API", () => {
       })
       expect(log).not.toBeNull()
       expect(log?.entityType).toBe("User")
+    })
+
+    it("deletes legacy string-id users successfully", async () => {
+      const prisma = getTestPrisma()
+      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
+      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+      const target = await prisma.user.create({
+        data: {
+          id: "seed-user-recruiter",
+          name: "Legacy Recruiter",
+          email: "legacy-recruiter@test.com",
+          role: "RECRUITER",
+          passwordHash: "x",
+        },
+      })
+
+      const { DELETE } = await import("@/app/api/users/[id]/route")
+      const response = await DELETE(
+        new Request("http://localhost/api/users/" + target.id, {
+          method: "DELETE",
+        }) as never,
+        { params: Promise.resolve({ id: target.id }) },
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ success: true })
+
+      const deleted = await prisma.user.findUnique({ where: { id: target.id } })
+      expect(deleted).toBeNull()
     })
 
     it("allows deleting an inactive admin when other active admins exist", async () => {
