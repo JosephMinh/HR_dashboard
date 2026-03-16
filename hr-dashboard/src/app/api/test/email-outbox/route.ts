@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { clearTestOutbox, getTestOutbox } from '@/lib/email'
 
+export const dynamic = 'force-dynamic'
+
 function isTestOutboxEnabled(): boolean {
   return process.env.NODE_ENV === 'test' || process.env.VITEST === 'true'
 }
@@ -34,7 +36,14 @@ export async function GET(request: NextRequest) {
       sentAt: email.sentAt.toISOString(),
     }))
 
-  return NextResponse.json({ emails })
+  return NextResponse.json(
+    { emails },
+    {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    },
+  )
 }
 
 export async function DELETE() {
@@ -44,5 +53,12 @@ export async function DELETE() {
   }
 
   clearTestOutbox()
-  return NextResponse.json({ success: true })
+  return NextResponse.json(
+    { success: true },
+    {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    },
+  )
 }
