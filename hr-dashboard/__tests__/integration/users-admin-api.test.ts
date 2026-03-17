@@ -5,30 +5,28 @@
  *         POST /api/users/:id/reset-password, POST /api/users/:id/resend-invite
  *
  * Bead: hr-1o3f.2
+ *
+ * Auth: Uses real DB-backed auth harness (setupTestAuth). Edge cases that test
+ * stale/race-condition sessions use forceSession().
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { hash } from "bcryptjs"
 
-import { createMockSession } from "@/test/auth"
 import {
   getTestPrisma,
   setupIntegrationTests,
   createTestFactories,
 } from "@/test/setup-integration"
+import { setupTestAuth } from "@/test/test-auth"
 import {
   hashSetPasswordToken,
   issueSetPasswordToken,
   validateSetPasswordToken,
 } from "@/lib/password-setup-tokens"
 
-const authMock = vi.fn()
 const { sendEmailMock } = vi.hoisted(() => ({
   sendEmailMock: vi.fn(),
-}))
-
-vi.mock("@/lib/auth", () => ({
-  auth: authMock,
 }))
 
 vi.mock("@/lib/email", () => ({
@@ -44,9 +42,10 @@ vi.mock("@/lib/rate-limit", () => ({
 describe("Integration: Admin User Management API", () => {
   setupIntegrationTests()
   const factories = createTestFactories()
+  const testAuth = setupTestAuth()
 
-  beforeEach(() => {
-    authMock.mockResolvedValue(createMockSession({ role: "ADMIN" }))
+  beforeEach(async () => {
+    await testAuth.loginAsNewUser({ role: "ADMIN" })
     sendEmailMock.mockReset()
     sendEmailMock.mockResolvedValue({
       success: true,
@@ -60,7 +59,7 @@ describe("Integration: Admin User Management API", () => {
 
   describe("GET /api/users", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const { GET } = await import("@/app/api/users/route")
       const response = await GET(
         new Request("http://localhost/api/users") as never,
@@ -69,7 +68,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 for non-admin role", async () => {
-      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      await testAuth.loginAsNewUser({ role: "RECRUITER" })
       const { GET } = await import("@/app/api/users/route")
       const response = await GET(
         new Request("http://localhost/api/users") as never,
@@ -78,7 +77,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 for viewer role", async () => {
-      authMock.mockResolvedValue(createMockSession({ role: "VIEWER" }))
+      await testAuth.loginAsNewUser({ role: "VIEWER" })
       const { GET } = await import("@/app/api/users/route")
       const response = await GET(
         new Request("http://localhost/api/users") as never,
@@ -96,8 +95,9 @@ describe("Integration: Admin User Management API", () => {
       )
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data.users).toHaveLength(2)
-      expect(data.total).toBe(2)
+      // 3 users: auth admin + Alice + Bob
+      expect(data.users).toHaveLength(3)
+      expect(data.total).toBe(3)
       expect(data.page).toBe(1)
       expect(data.pageSize).toBe(20)
       expect(data.totalPages).toBe(1)
@@ -171,7 +171,8 @@ describe("Integration: Admin User Management API", () => {
         new Request("http://localhost/api/users?active=all") as never,
       )
       const data = await response.json()
-      expect(data.users).toHaveLength(2)
+      // 3 users: auth admin (active) + Active + Inactive
+      expect(data.users).toHaveLength(3)
     })
 
     it("excludes passwordHash from response", async () => {
@@ -193,7 +194,7 @@ describe("Integration: Admin User Management API", () => {
 
   describe("POST /api/users", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const { POST } = await import("@/app/api/users/route")
       const response = await POST(
         new Request("http://localhost/api/users", {
@@ -205,7 +206,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 for non-admin", async () => {
-      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      await testAuth.loginAsNewUser({ role: "RECRUITER" })
       const { POST } = await import("@/app/api/users/route")
       const response = await POST(
         new Request("http://localhost/api/users", {
@@ -344,7 +345,7 @@ describe("Integration: Admin User Management API", () => {
 
   describe("PATCH /api/users/:id", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const user = await factories.createUser({ email: "target@test.com" })
       const { PATCH } = await import("@/app/api/users/[id]/route")
       const response = await PATCH(
@@ -358,7 +359,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 for non-admin", async () => {
-      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      await testAuth.loginAsNewUser({ role: "RECRUITER" })
       const user = await factories.createUser({ email: "target@test.com" })
       const { PATCH } = await import("@/app/api/users/[id]/route")
       const response = await PATCH(
@@ -402,20 +403,15 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("prevents self-role-change", async () => {
-      const prisma = getTestPrisma()
-      const admin = await prisma.user.create({
-        data: { name: "Admin", email: "admin@test.com", role: "ADMIN", passwordHash: "x" },
-      })
-
-      authMock.mockResolvedValue(createMockSession({ id: admin.id, role: "ADMIN" }))
+      const adminId = testAuth.currentUserId!
 
       const { PATCH } = await import("@/app/api/users/[id]/route")
       const response = await PATCH(
-        new Request("http://localhost/api/users/" + admin.id, {
+        new Request("http://localhost/api/users/" + adminId, {
           method: "PATCH",
           body: JSON.stringify({ role: "VIEWER" }),
         }) as never,
-        { params: Promise.resolve({ id: admin.id }) },
+        { params: Promise.resolve({ id: adminId }) },
       )
       expect(response.status).toBe(400)
       const data = await response.json()
@@ -423,20 +419,15 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("prevents self-deactivation", async () => {
-      const prisma = getTestPrisma()
-      const admin = await prisma.user.create({
-        data: { name: "Admin", email: "admin@test.com", role: "ADMIN", passwordHash: "x" },
-      })
-
-      authMock.mockResolvedValue(createMockSession({ id: admin.id, role: "ADMIN" }))
+      const adminId = testAuth.currentUserId!
 
       const { PATCH } = await import("@/app/api/users/[id]/route")
       const response = await PATCH(
-        new Request("http://localhost/api/users/" + admin.id, {
+        new Request("http://localhost/api/users/" + adminId, {
           method: "PATCH",
           body: JSON.stringify({ active: false }),
         }) as never,
-        { params: Promise.resolve({ id: admin.id }) },
+        { params: Promise.resolve({ id: adminId }) },
       )
       expect(response.status).toBe(400)
       const data = await response.json()
@@ -444,7 +435,17 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("prevents last-admin demotion", async () => {
-      // Create only one admin
+      // Edge case: stale session claims ADMIN but DB role was changed concurrently.
+      // The server-side guard must still prevent demoting the last real admin.
+      const prisma = getTestPrisma()
+      const currentUser = testAuth.currentUserId!
+      const currentAdmin = testAuth.getLastUser("ADMIN")!
+      await prisma.user.update({ where: { id: currentUser }, data: { role: "VIEWER" } })
+      testAuth.forceSession({
+        expires: new Date(Date.now() + 3600000).toISOString(),
+        user: { id: currentUser, name: currentAdmin.name, email: currentAdmin.email, role: "ADMIN", mustChangePassword: false },
+      })
+
       const admin = await factories.createUser({ role: "ADMIN", email: "only-admin@test.com" })
 
       const { PATCH } = await import("@/app/api/users/[id]/route")
@@ -461,6 +462,16 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("prevents last-admin deactivation", async () => {
+      // Same edge case: stale session, last-admin deactivation guard
+      const prisma = getTestPrisma()
+      const currentUser = testAuth.currentUserId!
+      const currentAdmin = testAuth.getLastUser("ADMIN")!
+      await prisma.user.update({ where: { id: currentUser }, data: { role: "VIEWER" } })
+      testAuth.forceSession({
+        expires: new Date(Date.now() + 3600000).toISOString(),
+        user: { id: currentUser, name: currentAdmin.name, email: currentAdmin.email, role: "ADMIN", mustChangePassword: false },
+      })
+
       const admin = await factories.createUser({ role: "ADMIN", email: "only-admin@test.com" })
 
       const { PATCH } = await import("@/app/api/users/[id]/route")
@@ -542,8 +553,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("creates audit log with USER_DEACTIVATED on deactivation", async () => {
-      // Need two admins so we can deactivate one
-      await factories.createUser({ role: "ADMIN", email: "admin2@test.com" })
+      // Auth admin + target = 2 admins, so we can deactivate the target
       const target = await factories.createUser({ role: "ADMIN", email: "target@test.com" })
 
       const { PATCH } = await import("@/app/api/users/[id]/route")
@@ -569,7 +579,7 @@ describe("Integration: Admin User Management API", () => {
 
   describe("POST /api/users/:id/reset-password", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const user = await factories.createUser({ email: "target@test.com" })
       const { POST } = await import("@/app/api/users/[id]/reset-password/route")
       const response = await POST(
@@ -582,7 +592,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 for non-admin", async () => {
-      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      await testAuth.loginAsNewUser({ role: "RECRUITER" })
       const user = await factories.createUser({ email: "target@test.com" })
       const { POST } = await import("@/app/api/users/[id]/reset-password/route")
       const response = await POST(
@@ -740,7 +750,7 @@ describe("Integration: Admin User Management API", () => {
 
   describe("POST /api/users/:id/resend-invite", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const user = await factories.createUser({ email: "target@test.com" })
       const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
       const response = await POST(
@@ -753,7 +763,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 for non-admin", async () => {
-      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      await testAuth.loginAsNewUser({ role: "RECRUITER" })
       const user = await factories.createUser({ email: "target@test.com" })
       const { POST } = await import("@/app/api/users/[id]/resend-invite/route")
       const response = await POST(
@@ -933,7 +943,7 @@ describe("Integration: Admin User Management API", () => {
 
   describe("DELETE /api/users/:id", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const user = await factories.createUser({ email: "target@test.com" })
       const { DELETE } = await import("@/app/api/users/[id]/route")
       const response = await DELETE(
@@ -946,7 +956,7 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 for non-admin", async () => {
-      authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+      await testAuth.loginAsNewUser({ role: "RECRUITER" })
       const user = await factories.createUser({ email: "target@test.com" })
       const { DELETE } = await import("@/app/api/users/[id]/route")
       const response = await DELETE(
@@ -959,14 +969,13 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 403 when trying to delete yourself", async () => {
-      const actor = await factories.createUser({ role: "ADMIN", email: "self@test.com" })
-      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+      const adminId = testAuth.currentUserId!
       const { DELETE } = await import("@/app/api/users/[id]/route")
       const response = await DELETE(
-        new Request("http://localhost/api/users/" + actor.id, {
+        new Request("http://localhost/api/users/" + adminId, {
           method: "DELETE",
         }) as never,
-        { params: Promise.resolve({ id: actor.id }) },
+        { params: Promise.resolve({ id: adminId }) },
       )
       expect(response.status).toBe(403)
       const data = await response.json()
@@ -997,16 +1006,21 @@ describe("Integration: Admin User Management API", () => {
     })
 
     it("returns 409 when deleting the last active admin", async () => {
+      // Edge case: stale session — actor was deactivated but session still claims ADMIN.
+      // The server must prevent deleting the last active admin regardless.
       const prisma = getTestPrisma()
-      // Create actor first, then deactivate all non-target admins
-      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
+      const currentUser = testAuth.currentUserId!
+      const currentAdmin = testAuth.getLastUser("ADMIN")!
       const admin = await factories.createUser({ role: "ADMIN", email: "only-admin@test.com" })
       // Deactivate all admins except the target so they are the last active admin
       await prisma.user.updateMany({
         where: { role: "ADMIN", NOT: { id: admin.id } },
         data: { active: false },
       })
-      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
+      testAuth.forceSession({
+        expires: new Date(Date.now() + 3600000).toISOString(),
+        user: { id: currentUser, name: currentAdmin.name, email: currentAdmin.email, role: "ADMIN", mustChangePassword: false },
+      })
 
       const { DELETE } = await import("@/app/api/users/[id]/route")
       const response = await DELETE(
@@ -1022,8 +1036,6 @@ describe("Integration: Admin User Management API", () => {
 
     it("deletes user successfully and creates audit log", async () => {
       const prisma = getTestPrisma()
-      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
-      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
       const target = await factories.createUser({ email: "target@test.com" })
 
       const { DELETE } = await import("@/app/api/users/[id]/route")
@@ -1051,8 +1063,6 @@ describe("Integration: Admin User Management API", () => {
 
     it("deletes legacy string-id users successfully", async () => {
       const prisma = getTestPrisma()
-      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
-      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
       const target = await prisma.user.create({
         data: {
           id: "seed-user-recruiter",
@@ -1079,8 +1089,6 @@ describe("Integration: Admin User Management API", () => {
 
     it("allows deleting an inactive admin when other active admins exist", async () => {
       const prisma = getTestPrisma()
-      const actor = await factories.createUser({ role: "ADMIN", email: "active-admin@test.com" })
-      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
       const inactiveAdmin = await factories.createUser({ role: "ADMIN", email: "inactive@test.com" })
       await prisma.user.update({
         where: { id: inactiveAdmin.id },
@@ -1099,8 +1107,6 @@ describe("Integration: Admin User Management API", () => {
 
     it("preserves audit logs after user deletion (SetNull)", async () => {
       const prisma = getTestPrisma()
-      const actor = await factories.createUser({ role: "ADMIN", email: "actor@test.com" })
-      authMock.mockResolvedValue(createMockSession({ id: actor.id, role: "ADMIN" }))
       const target = await factories.createUser({ email: "target@test.com" })
 
       // Create an audit log referencing the target user

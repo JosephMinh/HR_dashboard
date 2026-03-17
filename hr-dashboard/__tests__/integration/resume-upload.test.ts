@@ -1,20 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { createMockSession } from "@/test/auth"
 import {
   createTestFactories,
   getTestPrisma,
   setupIntegrationTests,
 } from "@/test/setup-integration"
+import { setupTestAuth } from "@/test/test-auth"
 
-const authMock = vi.fn()
+const testAuth = setupTestAuth()
+
 const generateUploadUrlMock = vi.fn()
 const generateDownloadUrlMock = vi.fn()
 const VALID_RESUME_SIZE_BYTES = 1024
-
-vi.mock("@/lib/auth", () => ({
-  auth: authMock,
-}))
 
 vi.mock("@/lib/storage", async () => {
   const actual = await vi.importActual<typeof import("@/lib/storage")>(
@@ -31,8 +28,8 @@ describe("Integration: Resume upload API", () => {
   setupIntegrationTests({ logger: true })
   const factories = createTestFactories()
 
-  beforeEach(() => {
-    authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+  beforeEach(async () => {
+    await testAuth.loginAsNewUser({ role: "RECRUITER" })
     generateUploadUrlMock.mockReset()
     generateDownloadUrlMock.mockReset()
     generateUploadUrlMock.mockImplementation(
@@ -44,7 +41,7 @@ describe("Integration: Resume upload API", () => {
   })
 
   it("returns 401 for unauthenticated upload URL requests", async () => {
-    authMock.mockResolvedValue(null)
+    testAuth.logout()
 
     const { POST } = await import("@/app/api/upload/resume/route")
     const response = await POST(
@@ -59,7 +56,7 @@ describe("Integration: Resume upload API", () => {
   })
 
   it("returns 403 for viewer upload URL requests", async () => {
-    authMock.mockResolvedValue(createMockSession({ role: "VIEWER" }))
+    await testAuth.loginAsNewUser({ role: "VIEWER" })
 
     const { POST } = await import("@/app/api/upload/resume/route")
     const response = await POST(
@@ -231,7 +228,7 @@ describe("Integration: Resume upload API", () => {
   })
 
   it("returns 401 for unauthenticated download URL requests", async () => {
-    authMock.mockResolvedValue(null)
+    testAuth.logout()
 
     const validKey = "resumes/123e4567-e89b-12d3-a456-426614174000.pdf"
     const { GET } = await import("@/app/api/upload/resume/[key]/route")

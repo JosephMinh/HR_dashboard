@@ -6,13 +6,11 @@ services:
     image: postgres:16-alpine
     container_name: hr-dashboard-test-db
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: hr_dashboard_test
-    volumes:
-      - postgres-test-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -20,15 +18,15 @@ services:
       retries: 5
     tmpfs:
       - /var/lib/postgresql/data
-    restart: unless-stopped
+    restart: "no"
 
   # Optional: MinIO for S3-compatible storage testing
   minio-test:
     image: minio/minio:latest
     container_name: hr-dashboard-test-minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -44,5 +42,4 @@ services:
       - storage
 
 volumes:
-  postgres-test-data:
   minio-test-data:

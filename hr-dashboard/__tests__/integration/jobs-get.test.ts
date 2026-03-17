@@ -1,24 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 
 import {
   createTestFactories,
   getTestPrisma,
   setupIntegrationTests,
 } from "@/test/setup-integration"
-import { createMockSession } from "@/test/auth"
+import { setupTestAuth } from "@/test/test-auth"
 
-const authMock = vi.fn()
-
-vi.mock("@/lib/auth", () => ({
-  auth: authMock,
-}))
+const testAuth = setupTestAuth()
 
 describe("Integration: GET /api/jobs", () => {
   setupIntegrationTests({ logger: true })
   const factories = createTestFactories()
 
-  beforeEach(() => {
-    authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+  beforeEach(async () => {
+    await testAuth.loginAsNewUser({ role: "RECRUITER" })
   })
 
   it("filters by status and returns total count", async () => {

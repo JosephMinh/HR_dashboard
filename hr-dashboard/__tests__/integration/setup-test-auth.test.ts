@@ -11,9 +11,9 @@
 import { describe, it, expect } from "vitest"
 import {
   setupIntegrationTests,
-  setupTestAuth,
   getTestPrisma,
 } from "@/test/setup-integration"
+import { setupTestAuth } from "@/test/test-auth"
 
 describe("setupTestAuth()", () => {
   setupIntegrationTests()

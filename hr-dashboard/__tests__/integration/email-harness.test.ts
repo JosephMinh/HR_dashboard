@@ -8,10 +8,10 @@
 import { describe, it, expect } from "vitest"
 import {
   setupIntegrationTests,
-  setupTestAuth,
   setupEmailHarness,
   getTestPrisma,
 } from "@/test/setup-integration"
+import { setupTestAuth } from "@/test/test-auth"
 import { sendEmail } from "@/lib/email"
 
 // Mock rate limiting to avoid Redis dependency

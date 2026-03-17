@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
 
-type RateLimitScope = 'auth' | 'read' | 'upload' | 'write'
+export type RateLimitScope = 'auth' | 'read' | 'upload' | 'write'
 
 type RateLimitRule = {
   limit: number

@@ -1,28 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 
-import { createMockSession } from "@/test/auth"
 import {
   createTestFactories,
   getTestPrisma,
   setupIntegrationTests,
 } from "@/test/setup-integration"
+import { setupTestAuth } from "@/test/test-auth"
 
-const authMock = vi.fn()
-
-vi.mock("@/lib/auth", () => ({
-  auth: authMock,
-}))
+const testAuth = setupTestAuth()
 
 describe("Integration: POST /api/candidates", () => {
   setupIntegrationTests({ logger: true })
   const factories = createTestFactories()
 
-  beforeEach(() => {
-    authMock.mockResolvedValue(createMockSession({ role: "RECRUITER" }))
+  beforeEach(async () => {
+    await testAuth.loginAsNewUser({ role: "RECRUITER" })
   })
 
   it("returns 401 when unauthenticated", async () => {
-    authMock.mockResolvedValue(null)
+    testAuth.logout()
 
     const { POST } = await import("@/app/api/candidates/route")
     const response = await POST(
@@ -40,7 +36,7 @@ describe("Integration: POST /api/candidates", () => {
   })
 
   it("returns 403 for viewer role", async () => {
-    authMock.mockResolvedValue(createMockSession({ role: "VIEWER" }))
+    await testAuth.loginAsNewUser({ role: "VIEWER" })
 
     const { POST } = await import("@/app/api/candidates/route")
     const response = await POST(

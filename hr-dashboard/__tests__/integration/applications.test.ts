@@ -1,28 +1,23 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 
-import { createMockSession } from "@/test/auth"
 import {
   createTestFactories,
   getTestPrisma,
   setupIntegrationTests,
 } from "@/test/setup-integration"
+import { setupTestAuth } from "@/test/test-auth"
 
-const authMock = vi.fn()
-
-vi.mock("@/lib/auth", () => ({
-  auth: authMock,
-}))
+const testAuth = setupTestAuth()
 
 describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
   setupIntegrationTests({ logger: true })
   const factories = createTestFactories()
 
   async function signInAs(role: "ADMIN" | "RECRUITER" | "VIEWER" = "RECRUITER") {
-    const user = await factories.createUser({
+    const user = await testAuth.loginAsNewUser({
       role,
       email: `${role.toLowerCase()}-${Date.now()}@example.com`,
     })
-    authMock.mockResolvedValue(createMockSession({ id: user.id, role: user.role }))
     return user
   }
 
@@ -32,7 +27,7 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
 
   describe("POST /api/applications", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
 
       const { POST } = await import("@/app/api/applications/route")
       const response = await POST(
@@ -444,7 +439,7 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
     })
 
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
 
       const { PATCH } = await import("@/app/api/applications/[id]/route")
       const response = await PATCH(
@@ -554,7 +549,7 @@ describe("Integration: Applications API (POST/PATCH/DELETE)", () => {
     })
 
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
 
       const { DELETE } = await import("@/app/api/applications/[id]/route")
       const response = await DELETE(

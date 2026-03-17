@@ -49,6 +49,14 @@ process.env.DATABASE_URL = TEST_DATABASE_URL
 
 let testPrisma: PrismaClient | null = null
 
+// Share a single PrismaClient with `@/lib/prisma` to avoid dual connection
+// pools.  `src/lib/prisma.ts` checks `globalForPrisma.prisma` before creating
+// its own client, so setting it here (before any route module is imported)
+// ensures every `import { prisma } from "@/lib/prisma"` in the test process
+// reuses the same adapter & pool — eliminating deadlocks between TRUNCATE
+// (AccessExclusiveLock) and route-handler queries (RowExclusiveLock).
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+
 /**
  * Get the test Prisma client singleton
  * Uses PrismaPg adapter like the main app
@@ -57,6 +65,8 @@ export function getTestPrisma(): PrismaClient {
   if (!testPrisma) {
     const adapter = new PrismaPg({ connectionString: TEST_DATABASE_URL })
     testPrisma = new PrismaClient({ adapter })
+    // Make `@/lib/prisma` reuse this same client instead of creating its own
+    globalForPrisma.prisma = testPrisma
   }
   return testPrisma
 }
@@ -68,6 +78,8 @@ export async function disconnectTestPrisma(): Promise<void> {
   if (testPrisma) {
     await testPrisma.$disconnect()
     testPrisma = null
+    // Clear the global so a fresh client is created if tests reinitialise
+    delete (globalForPrisma as Record<string, unknown>).prisma
   }
 }
 

@@ -1,5 +1,6 @@
 // HR Dashboard Prisma Schema
-// All 5 entities: User, Job, Candidate, Application, AuditLog
+// All entities: User, Job, Candidate, Application, AuditLog, SetPasswordToken,
+// HeadcountProjection, Tradeoff
 
 generator client {
   provider = "prisma-client"
@@ -78,24 +79,53 @@ model User {
 }
 
 model Job {
-  id              String          @id @default(uuid())
-  title           String
-  department      String
-  description     String          @db.Text
-  location        String?
-  hiringManager   String?
-  recruiterOwner  String?
-  status          JobStatus       @default(OPEN)
-  priority        JobPriority     @default(MEDIUM)
-  pipelineHealth  PipelineHealth?
-  isCritical      Boolean         @default(false)
-  openedAt        DateTime?
-  targetFillDate  DateTime?
-  closedAt        DateTime?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                 String          @id @default(uuid())
+  title              String
+  department         String
+  description        String          @db.Text
+  location           String?
+  hiringManager      String?
+  recruiterOwner     String?
+  status             JobStatus       @default(OPEN)
+  priority           JobPriority     @default(MEDIUM)
+  pipelineHealth     PipelineHealth?
+  isCritical         Boolean         @default(false)
+  openedAt           DateTime?
+  targetFillDate     DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
-  applications    Application[]
+  // WFP import fields
+  importKey          String?         @unique
+  sourceRow          Int?
+  sourceSheet        String?
+  tempJobId          Int?
+  hibobId            Int?
+  level              String?
+  employeeType       String?
+  function           String?
+  horizon            String?
+  asset              String?
+  keyCapability      String?
+  milestone          String?
+  businessRationale  String?
+  corporatePriority  String?
+  functionalPriority String?
+  fpaApproved        String?
+  fpaLevel           String?
+  fpaNote            String?
+  fpaTiming          String?
+  talentAssessment   String?
+  recruitingStatus   String?
+  hiredName          String?
+  isTradeoff         Boolean         @default(false)
+  notes              String?
+
+  applications            Application[]
+  headcountProjections    HeadcountProjection[]
+  tradeoffSources         Tradeoff[] @relation("Tradeoff_sourceJobIdToJob")
+  tradeoffTargets         Tradeoff[] @relation("Tradeoff_targetJobIdToJob")
 
   @@index([status])
   @@index([isCritical])
@@ -105,6 +135,13 @@ model Job {
   // Composite indexes for dashboard queries
   @@index([status, isCritical])
   @@index([status, pipelineHealth])
+  // WFP import indexes
+  @@index([employeeType])
+  @@index([function])
+  @@index([horizon])
+  @@index([level])
+  @@index([status, horizon])
+  @@index([tempJobId])
 }
 
 model Candidate {
@@ -183,4 +220,54 @@ model SetPasswordToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model HeadcountProjection {
+  id           String    @id
+  importKey    String    @unique
+  sourceRow    Int
+  tempJobId    Int?
+  rawTempJobId String?
+  matchedJobId String?
+  department   String
+  employeeName String?
+  level        String?
+  jobTitle     String?
+  startDate    DateTime?
+  monthlyFte   Json
+  createdAt    DateTime  @default(now())
+
+  matchedJob   Job?      @relation(fields: [matchedJobId], references: [id])
+
+  @@index([matchedJobId])
+  @@index([tempJobId])
+}
+
+model Tradeoff {
+  id               String   @id
+  importKey        String   @unique
+  sourceRow        Int
+  rowType          String
+  sourceTempJobId  Int?
+  sourceJobId      String?
+  sourceDepartment String?
+  sourceLevel      String?
+  sourceTitle      String?
+  targetTempJobId  Int?
+  targetJobId      String?
+  targetDepartment String?
+  targetLevel      String?
+  targetTitle      String?
+  levelDifference  Int?
+  status           String?
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  sourceJob        Job?     @relation("Tradeoff_sourceJobIdToJob", fields: [sourceJobId], references: [id])
+  targetJob        Job?     @relation("Tradeoff_targetJobIdToJob", fields: [targetJobId], references: [id])
+
+  @@index([sourceJobId])
+  @@index([sourceTempJobId])
+  @@index([targetJobId])
+  @@index([targetTempJobId])
 }

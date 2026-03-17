@@ -7,20 +7,16 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { hash, compare } from "bcryptjs"
+import { compare } from "bcryptjs"
 
-import { createMockSession } from "@/test/auth"
 import {
   getTestPrisma,
   setupIntegrationTests,
   createTestFactories,
 } from "@/test/setup-integration"
+import { setupTestAuth } from "@/test/test-auth"
 
-const authMock = vi.fn()
-
-vi.mock("@/lib/auth", () => ({
-  auth: authMock,
-}))
+const testAuth = setupTestAuth()
 
 // Mock rate limiting to avoid Redis dependency in tests
 vi.mock("@/lib/rate-limit", () => ({
@@ -36,21 +32,14 @@ describe("Integration: Self-Service API", () => {
   let testUserId: string
 
   beforeEach(async () => {
-    const passwordHash = await hash(TEST_PASSWORD, 10)
-    const prisma = getTestPrisma()
-    const user = await prisma.user.create({
-      data: {
-        name: "Test User",
-        email: "self@test.com",
-        role: "RECRUITER",
-        passwordHash,
-        mustChangePassword: false,
-      },
+    const user = await testAuth.loginAsNewUser({
+      role: "RECRUITER",
+      name: "Test User",
+      email: "self@test.com",
+      password: TEST_PASSWORD,
+      mustChangePassword: false,
     })
     testUserId = user.id
-    authMock.mockResolvedValue(
-      createMockSession({ id: testUserId, role: "RECRUITER", name: "Test User", email: "self@test.com" })
-    )
   })
 
   // =========================================================================
@@ -59,7 +48,7 @@ describe("Integration: Self-Service API", () => {
 
   describe("PATCH /api/users/me", () => {
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const { PATCH } = await import("@/app/api/users/me/route")
       const response = await PATCH(
         new Request("http://localhost/api/users/me", {
@@ -131,9 +120,7 @@ describe("Integration: Self-Service API", () => {
     })
 
     it("blocks gated user from profile update", async () => {
-      authMock.mockResolvedValue(
-        createMockSession({ id: testUserId, role: "RECRUITER", mustChangePassword: true })
-      )
+      await testAuth.setMustChangePassword(true)
       const { PATCH } = await import("@/app/api/users/me/route")
       const response = await PATCH(
         new Request("http://localhost/api/users/me", {
@@ -170,7 +157,7 @@ describe("Integration: Self-Service API", () => {
     const NEW_PASSWORD = "NewPassword456!"
 
     it("returns 401 when unauthenticated", async () => {
-      authMock.mockResolvedValue(null)
+      testAuth.logout()
       const { POST } = await import("@/app/api/users/me/password/route")
       const response = await POST(
         new Request("http://localhost/api/users/me/password", {
@@ -207,9 +194,7 @@ describe("Integration: Self-Service API", () => {
         data: { mustChangePassword: true },
       })
 
-      authMock.mockResolvedValue(
-        createMockSession({ id: testUserId, role: "RECRUITER", mustChangePassword: true })
-      )
+      await testAuth.setMustChangePassword(true)
 
       const { POST } = await import("@/app/api/users/me/password/route")
       const response = await POST(

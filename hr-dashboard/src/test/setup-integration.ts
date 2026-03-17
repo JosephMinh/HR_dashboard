@@ -40,10 +40,15 @@ export {
 } from "./test-db"
 export { TestLogger } from "./logger"
 export { createMockSession } from "./auth"
-export { setupTestAuth, createAuthHarness } from "./auth-harness"
-export type { TestAuthHarness, AuthHarness, TestUser } from "./auth-harness"
+export { createAuthHarness } from "./auth-harness"
+export type { AuthHarness, TestUser } from "./auth-harness"
+// NOTE: setupTestAuth() lives in "@/test/test-auth" (separate file).
+// Do NOT re-export it here — it contains vi.mock() which Vitest hoists from
+// transitively imported modules, breaking tests with their own vi.mock('@/lib/auth').
 export { setupEmailHarness } from "./email-harness"
 export type { EmailHarness } from "./email-harness"
+export { setupRateLimitHarness } from "./rate-limit-harness"
+export type { RateLimitHarness } from "./rate-limit-harness"
 
 /**
  * Setup integration test environment
