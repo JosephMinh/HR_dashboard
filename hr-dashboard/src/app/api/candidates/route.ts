@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
   if (body.source && !Object.values(CandidateSource).includes(body.source)) {
     return NextResponse.json({ error: "Invalid source" }, { status: 400 })
   }
-  if (body.email && !isValidEmail(body.email)) {
+  if (body.email && !isValidEmail(body.email.trim())) {
     return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
   }
   if (body.linkedinUrl) {
