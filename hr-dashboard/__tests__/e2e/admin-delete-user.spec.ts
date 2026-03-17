@@ -10,6 +10,7 @@
 import { test, expect } from "./fixtures"
 import { hash } from "bcryptjs"
 import { getTestPassword, performLogin } from "./utils/auth"
+import { createLoggedPage } from "./utils/logger"
 
 const USERS_URL = "/admin/users"
 
@@ -110,6 +111,7 @@ test.describe("Admin Delete User", () => {
     adminPage,
     browser,
     prisma,
+    logger,
   }) => {
     const password = getTestPassword()
     const passwordHash = await hash(password, 10)
@@ -125,7 +127,7 @@ test.describe("Admin Delete User", () => {
     })
 
     const deletedUserContext = await browser.newContext()
-    const deletedUserPage = await deletedUserContext.newPage()
+    const deletedUserPage = createLoggedPage(await deletedUserContext.newPage(), logger)
 
     try {
       await adminPage.goto(USERS_URL, { waitUntil: "domcontentloaded" })

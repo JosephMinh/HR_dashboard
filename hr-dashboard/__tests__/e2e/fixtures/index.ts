@@ -8,7 +8,7 @@
  */
 
 import { test as base, type Page, type BrowserContext } from "@playwright/test"
-import { createE2ELogger, E2ETestLogger, setupNetworkLogging } from "../utils/logger"
+import { createE2ELogger, createLoggedPage, E2ETestLogger, setupNetworkLogging } from "../utils/logger"
 import { getAuthenticatedContext, type UserRole, TEST_USERS, performLogin } from "../utils/auth"
 import { getE2EPrisma } from "../utils/database"
 import type { PrismaClient } from "@/generated/prisma/client"
@@ -48,6 +48,11 @@ export type WorkerFixtures = {
  * Extended test with E2E fixtures
  */
 export const test = base.extend<TestFixtures, WorkerFixtures>({
+  page: async ({ page, logger }, use) => {
+    setupNetworkLogging(page, logger)
+    await use(createLoggedPage(page, logger))
+  },
+
   // Worker-scoped authenticated contexts
   adminContext: [
     async ({ browser }, use) => {
@@ -77,22 +82,25 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   // Test-scoped authenticated pages
-  adminPage: async ({ adminContext }, use) => {
-    const page = await adminContext.newPage()
-    await use(page)
-    await page.close()
+  adminPage: async ({ adminContext, logger }, use) => {
+    const rawPage = await adminContext.newPage()
+    setupNetworkLogging(rawPage, logger)
+    await use(createLoggedPage(rawPage, logger))
+    await rawPage.close()
   },
 
-  recruiterPage: async ({ recruiterContext }, use) => {
-    const page = await recruiterContext.newPage()
-    await use(page)
-    await page.close()
+  recruiterPage: async ({ recruiterContext, logger }, use) => {
+    const rawPage = await recruiterContext.newPage()
+    setupNetworkLogging(rawPage, logger)
+    await use(createLoggedPage(rawPage, logger))
+    await rawPage.close()
   },
 
-  viewerPage: async ({ viewerContext }, use) => {
-    const page = await viewerContext.newPage()
-    await use(page)
-    await page.close()
+  viewerPage: async ({ viewerContext, logger }, use) => {
+    const rawPage = await viewerContext.newPage()
+    setupNetworkLogging(rawPage, logger)
+    await use(createLoggedPage(rawPage, logger))
+    await rawPage.close()
   },
 
   // Logger for the current test
@@ -104,7 +112,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   // Page with logger attached
   pageWithLogger: async ({ page, logger }, use) => {
-    setupNetworkLogging(page, logger)
     await use({ page, logger })
   },
 

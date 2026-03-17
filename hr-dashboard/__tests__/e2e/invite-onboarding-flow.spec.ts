@@ -2,6 +2,7 @@ import type { APIRequestContext } from "@playwright/test"
 import { hash } from "bcryptjs"
 
 import { test, expect } from "./fixtures"
+import { createLoggedPage } from "./utils/logger"
 
 const STRONG_PASSWORD = "NewSecureP@ss123!"
 const OUTBOX_PATH = "/api/test/email-outbox"
@@ -70,6 +71,7 @@ test.describe("Invite Email Onboarding Flow", () => {
     browser,
     prisma,
     request,
+    logger,
   }) => {
     const testEmail = `e2e-invite-${Date.now()}@hrtest.local`
     const testName = "E2E Invite User"
@@ -102,7 +104,7 @@ test.describe("Invite Email Onboarding Flow", () => {
 
     const setupUrl = extractSetPasswordUrl(inviteEmail)
     const newUserContext = await browser.newContext()
-    const newUserPage = await newUserContext.newPage()
+    const newUserPage = createLoggedPage(await newUserContext.newPage(), logger)
 
     try {
       await newUserPage.goto(setupUrl, { waitUntil: "domcontentloaded" })
@@ -172,6 +174,7 @@ test.describe("Set-Password Error States", () => {
     browser,
     prisma,
     request,
+    logger,
   }) => {
     const testEmail = `e2e-used-token-${Date.now()}@hrtest.local`
 
@@ -191,7 +194,7 @@ test.describe("Set-Password Error States", () => {
 
     // First use: set the password successfully
     const ctx1 = await browser.newContext()
-    const page1 = await ctx1.newPage()
+    const page1 = createLoggedPage(await ctx1.newPage(), logger)
     try {
       await page1.goto(setupUrl, { waitUntil: "domcontentloaded" })
       await expect(page1.getByText("Create your password")).toBeVisible({
@@ -209,7 +212,7 @@ test.describe("Set-Password Error States", () => {
 
     // Second use: same token should show "Already Used"
     const ctx2 = await browser.newContext()
-    const page2 = await ctx2.newPage()
+    const page2 = createLoggedPage(await ctx2.newPage(), logger)
     try {
       await page2.goto(setupUrl, { waitUntil: "domcontentloaded" })
       await expect(page2.getByText("Already Used")).toBeVisible({

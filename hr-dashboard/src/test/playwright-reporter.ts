@@ -15,10 +15,19 @@ interface PlaywrightTestSummary {
   project: string
   status: string
   durationMs: number
+  steps: PlaywrightStepSummary[]
   attachments: Array<{ name: string; contentType: string; path?: string }>
   errors?: Array<{ message: string; stack?: string }>
   stderr?: string[]
   stdout?: string[]
+}
+
+interface PlaywrightStepSummary {
+  title: string
+  category?: string
+  durationMs: number
+  error?: string
+  steps: PlaywrightStepSummary[]
 }
 
 interface PlaywrightRunSummary {
@@ -35,8 +44,26 @@ interface PlaywrightRunSummary {
 
 const DEFAULT_OUTPUT_DIR = path.join(process.cwd(), "test-results", "playwright")
 
+type ReporterStepLike = {
+  title?: string
+  category?: string
+  duration?: number
+  error?: { message?: string } | string
+  steps?: ReporterStepLike[]
+}
+
 function serializeOutput(chunks: Array<string | Buffer>): string[] {
   return chunks.map((chunk) => (Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk))
+}
+
+function serializeSteps(steps: ReporterStepLike[] | undefined): PlaywrightStepSummary[] {
+  return (steps ?? []).map((step) => ({
+    title: step.title ?? "unnamed step",
+    category: step.category,
+    durationMs: step.duration ?? 0,
+    error: typeof step.error === "string" ? step.error : step.error?.message,
+    steps: serializeSteps(step.steps),
+  }))
 }
 
 function getProjectName(test: TestCase): string {
@@ -85,6 +112,7 @@ export default class PlaywrightDetailedReporter implements Reporter {
       project: getProjectName(test),
       status: result.status,
       durationMs: result.duration,
+      steps: serializeSteps((result as unknown as { steps?: ReporterStepLike[] }).steps),
       attachments,
       errors: result.errors.map((error) => ({
         message: error.message ?? "Unknown error",
@@ -156,6 +184,9 @@ export default class PlaywrightDetailedReporter implements Reporter {
 
     summary.tests.forEach((test) => {
       lines.push(`[${test.status}] ${test.title} (${test.durationMs}ms)`)
+      if (test.steps.length > 0) {
+        this.appendStepLines(lines, test.steps, 1)
+      }
       if (test.attachments.length > 0) {
         test.attachments.forEach((attachment) => {
           if (attachment.path) {
@@ -171,5 +202,19 @@ export default class PlaywrightDetailedReporter implements Reporter {
     })
 
     return `${lines.join("\n")}\n`
+  }
+
+  private appendStepLines(lines: string[], steps: PlaywrightStepSummary[], depth: number) {
+    const indent = "  ".repeat(depth)
+
+    steps.forEach((step) => {
+      const category = step.category ? ` [${step.category}]` : ""
+      const error = step.error ? ` ERROR: ${step.error}` : ""
+      lines.push(`${indent}- ${step.title}${category} (${step.durationMs}ms)${error}`)
+
+      if (step.steps.length > 0) {
+        this.appendStepLines(lines, step.steps, depth + 1)
+      }
+    })
   }
 }

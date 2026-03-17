@@ -11,6 +11,7 @@
 
 import { test, expect } from "./fixtures"
 import { getE2EPrisma } from "./utils/database"
+import { createLoggedPage } from "./utils/logger"
 
 const STRONG_PASSWORD = "NewSecureP@ss123"
 
@@ -18,6 +19,7 @@ test.describe("Temp-Password Full Lifecycle", () => {
   test("admin creates user, user logs in with temp password, changes it, and accesses dashboard", async ({
     adminPage,
     browser,
+    logger,
   }) => {
     // Step 1: Admin creates a user via the UI
     await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
@@ -51,7 +53,7 @@ test.describe("Temp-Password Full Lifecycle", () => {
 
     // Step 2: New user logs in with temp password
     const newUserContext = await browser.newContext()
-    const newUserPage = await newUserContext.newPage()
+    const newUserPage = createLoggedPage(await newUserContext.newPage(), logger)
 
     await newUserPage.goto("/login", { waitUntil: "domcontentloaded" })
     await newUserPage.waitForSelector("#email", { state: "visible" })
