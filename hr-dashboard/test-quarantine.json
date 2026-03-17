@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "updatedAt": "2026-03-17",
+  "policy": {
+    "requireOwner": true,
+    "requireExpiresOn": true,
+    "failOnExpiredInCi": true,
+    "failOnUnapprovedFlakeInCi": true
+  },
+  "entries": []
+}
