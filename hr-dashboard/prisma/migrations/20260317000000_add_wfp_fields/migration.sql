@@ -79,9 +79,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS "HeadcountProjection_importKey_key"   ON "Head
 CREATE INDEX        IF NOT EXISTS "HeadcountProjection_matchedJobId_idx" ON "HeadcountProjection"("matchedJobId");
 CREATE INDEX        IF NOT EXISTS "HeadcountProjection_tempJobId_idx"    ON "HeadcountProjection"("tempJobId");
 
-ALTER TABLE "HeadcountProjection"
-    ADD CONSTRAINT "HeadcountProjection_matchedJobId_fkey"
-    FOREIGN KEY ("matchedJobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "HeadcountProjection"
+        ADD CONSTRAINT "HeadcountProjection_matchedJobId_fkey"
+        FOREIGN KEY ("matchedJobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Tradeoff table
@@ -116,10 +119,16 @@ CREATE INDEX        IF NOT EXISTS "Tradeoff_sourceTempJobId_idx"  ON "Tradeoff"(
 CREATE INDEX        IF NOT EXISTS "Tradeoff_targetJobId_idx"      ON "Tradeoff"("targetJobId");
 CREATE INDEX        IF NOT EXISTS "Tradeoff_targetTempJobId_idx"  ON "Tradeoff"("targetTempJobId");
 
-ALTER TABLE "Tradeoff"
-    ADD CONSTRAINT "Tradeoff_sourceJobId_fkey"
-    FOREIGN KEY ("sourceJobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "Tradeoff"
+        ADD CONSTRAINT "Tradeoff_sourceJobId_fkey"
+        FOREIGN KEY ("sourceJobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "Tradeoff"
-    ADD CONSTRAINT "Tradeoff_targetJobId_fkey"
-    FOREIGN KEY ("targetJobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "Tradeoff"
+        ADD CONSTRAINT "Tradeoff_targetJobId_fkey"
+        FOREIGN KEY ("targetJobId") REFERENCES "Job"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
