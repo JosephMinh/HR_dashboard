@@ -233,3 +233,130 @@ test.describe("Admin Delete User", () => {
     }
   })
 })
+
+test.describe("Deactivate and Reactivate User", () => {
+  test("admin can deactivate a user via Edit dialog and deactivated user cannot log in", async ({
+    adminPage,
+    browser,
+    prisma,
+    logger,
+  }) => {
+    const password = getTestPassword()
+    const passwordHash = await hash(password, 10)
+    const testEmail = `e2e-deactivate-${Date.now()}@hrtest.local`
+    const testUser = await prisma.user.create({
+      data: {
+        name: "E2E Deactivate Target",
+        email: testEmail,
+        passwordHash,
+        role: "VIEWER",
+        active: true,
+        mustChangePassword: false,
+      },
+    })
+
+    const targetContext = await browser.newContext()
+    const targetPage = createLoggedPage(await targetContext.newPage(), logger)
+
+    try {
+      await adminPage.goto(USERS_URL, { waitUntil: "domcontentloaded" })
+      await adminPage.waitForSelector("table tbody tr", { state: "visible" })
+
+      const userRow = adminPage.locator("tr", { hasText: "E2E Deactivate Target" })
+      await expect(userRow).toBeVisible()
+
+      // Open Edit dialog
+      await userRow.getByRole("button", { name: /^edit$/i }).click()
+
+      const dialog = adminPage.locator('[role="dialog"]')
+      await expect(dialog).toBeVisible()
+      await expect(dialog.getByText("Edit User")).toBeVisible()
+
+      // Uncheck the Active checkbox
+      const activeCheckbox = dialog.locator(`#edit-active-${testUser.id}`)
+      await expect(activeCheckbox).toBeChecked()
+      await activeCheckbox.uncheck()
+      await expect(activeCheckbox).not.toBeChecked()
+
+      // Save changes
+      await dialog.getByRole("button", { name: /save changes/i }).click()
+      await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
+      // Row should show "Inactive" badge
+      await expect(userRow.getByText("Inactive")).toBeVisible({ timeout: 10_000 })
+
+      // DB: user is deactivated
+      const updatedUser = await prisma.user.findUnique({ where: { id: testUser.id } })
+      expect(updatedUser?.active).toBe(false)
+
+      // Deactivated user cannot log in
+      const appOrigin = new URL(adminPage.url()).origin
+      await targetPage.goto(`${appOrigin}/login`, { waitUntil: "domcontentloaded" })
+      await targetPage.fill("#email", testEmail)
+      await targetPage.fill("#password", password)
+      await targetPage.click('button[type="submit"]')
+      await expect(targetPage.getByText(/invalid email or password/i)).toBeVisible({ timeout: 10_000 })
+      await expect(targetPage).toHaveURL(/\/login/)
+    } finally {
+      await targetContext.close()
+      await prisma.user.delete({ where: { id: testUser.id } }).catch(() => {})
+    }
+  })
+
+  test("admin can reactivate a deactivated user", async ({
+    adminPage,
+    prisma,
+  }) => {
+    const passwordHash = await hash(getTestPassword(), 10)
+    const testEmail = `e2e-reactivate-${Date.now()}@hrtest.local`
+    const testUser = await prisma.user.create({
+      data: {
+        name: "E2E Reactivate Target",
+        email: testEmail,
+        passwordHash,
+        role: "VIEWER",
+        active: false, // starts inactive
+        mustChangePassword: false,
+      },
+    })
+
+    try {
+      // Navigate to admin users with inactive filter to find the user
+      await adminPage.goto(`${USERS_URL}`, { waitUntil: "domcontentloaded" })
+      await adminPage.waitForSelector("table tbody tr", { state: "visible" })
+
+      // Switch to "All" filter to see inactive users
+      await adminPage.selectOption('select', 'all')
+      await adminPage.waitForTimeout(500)
+
+      const userRow = adminPage.locator("tr", { hasText: "E2E Reactivate Target" })
+      await expect(userRow).toBeVisible({ timeout: 10_000 })
+      await expect(userRow.getByText("Inactive")).toBeVisible()
+
+      // Open Edit dialog
+      await userRow.getByRole("button", { name: /^edit$/i }).click()
+
+      const dialog = adminPage.locator('[role="dialog"]')
+      await expect(dialog).toBeVisible()
+
+      // Check the Active checkbox to reactivate
+      const activeCheckbox = dialog.locator(`#edit-active-${testUser.id}`)
+      await expect(activeCheckbox).not.toBeChecked()
+      await activeCheckbox.check()
+      await expect(activeCheckbox).toBeChecked()
+
+      // Save changes
+      await dialog.getByRole("button", { name: /save changes/i }).click()
+      await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
+      // Row should now show "Active" badge (no "Inactive")
+      await expect(userRow.getByText("Inactive")).toHaveCount(0, { timeout: 10_000 })
+
+      // DB: user is active
+      const updatedUser = await prisma.user.findUnique({ where: { id: testUser.id } })
+      expect(updatedUser?.active).toBe(true)
+    } finally {
+      await prisma.user.delete({ where: { id: testUser.id } }).catch(() => {})
+    }
+  })
+})

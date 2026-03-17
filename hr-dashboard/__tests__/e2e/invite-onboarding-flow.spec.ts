@@ -152,6 +152,206 @@ test.describe("Invite Email Onboarding Flow", () => {
   })
 })
 
+test.describe("Resend Invite Flow", () => {
+  test("admin can resend invite, old token is invalidated, and new token allows setup", async ({
+    adminPage,
+    browser,
+    prisma,
+    request,
+    logger,
+  }) => {
+    const testEmail = `e2e-resend-${Date.now()}@hrtest.local`
+    const testName = "E2E Resend Invite"
+
+    await clearEmailOutbox(request)
+
+    // Step 1: Create user via admin UI — first invite is sent
+    await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+    await expect(adminPage.getByText("User Management")).toBeVisible()
+    await adminPage.getByRole("button", { name: /new user/i }).click()
+    await adminPage.fill("#create-name", testName)
+    await adminPage.fill("#create-email", testEmail)
+    await adminPage.selectOption("#create-role", "VIEWER")
+    await adminPage.getByRole("button", { name: /^create user$/i }).click()
+    await expect(
+      adminPage.getByText("User created. An onboarding invite email has been sent."),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // Capture the original invite URL before resending
+    const originalEmail = await fetchInviteEmail(request, testEmail)
+    const originalSetupUrl = extractSetPasswordUrl(originalEmail)
+
+    // Clear outbox so we can detect the resent email cleanly
+    await clearEmailOutbox(request)
+
+    // Step 2: Find the user row and click "Resend Invite"
+    const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
+    await expect(userRow).toBeVisible({ timeout: 10_000 })
+    await expect(userRow.getByText("Pending Setup")).toBeVisible()
+    await expect(userRow.getByRole("button", { name: /resend invite/i })).toBeVisible()
+    await userRow.getByRole("button", { name: /resend invite/i }).click()
+
+    // Confirmation dialog appears
+    const dialog = adminPage.locator('[role="dialog"]')
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText("Resend invite?")).toBeVisible()
+    await expect(dialog.getByText(testName)).toBeVisible()
+
+    // Confirm the resend
+    await dialog.getByRole("button", { name: /^resend invite$/i }).click()
+    await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
+    // Success banner appears
+    await expect(
+      adminPage.getByText("Onboarding invite resent successfully."),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // Step 3: New invite email arrives
+    const newEmail = await fetchInviteEmail(request, testEmail)
+    const newSetupUrl = extractSetPasswordUrl(newEmail)
+    expect(newSetupUrl).not.toBe(originalSetupUrl) // token changed
+
+    // Step 4: Original setup URL now shows "Already Used" (token was invalidated)
+    const ctx1 = await browser.newContext()
+    const oldTokenPage = createLoggedPage(await ctx1.newPage(), logger)
+    try {
+      await oldTokenPage.goto(originalSetupUrl, { waitUntil: "domcontentloaded" })
+      await expect(oldTokenPage.getByText("Already Used")).toBeVisible({ timeout: 10_000 })
+    } finally {
+      await ctx1.close()
+    }
+
+    // Step 5: New setup URL works — user can set password and log in
+    const ctx2 = await browser.newContext()
+    const newUserPage = createLoggedPage(await ctx2.newPage(), logger)
+    try {
+      await newUserPage.goto(newSetupUrl, { waitUntil: "domcontentloaded" })
+      await expect(newUserPage.getByText("Set Your Password")).toBeVisible({ timeout: 10_000 })
+      await newUserPage.fill("#newPassword", STRONG_PASSWORD)
+      await newUserPage.fill("#confirmPassword", STRONG_PASSWORD)
+      await newUserPage.getByRole("button", { name: /^set password$/i }).click()
+      await expect(newUserPage.getByText("Password Set Successfully")).toBeVisible({ timeout: 10_000 })
+
+      // DB: mustChangePassword is false after setup
+      const user = await prisma.user.findUnique({
+        where: { email: testEmail },
+        select: { mustChangePassword: true },
+      })
+      expect(user?.mustChangePassword).toBe(false)
+    } finally {
+      await ctx2.close()
+      await prisma.user.delete({ where: { email: testEmail } }).catch(() => {})
+    }
+  })
+})
+
+test.describe("Admin Reset Password Flow", () => {
+  test("admin can reset a user's password, old password stops working, and reset link sets a new password", async ({
+    adminPage,
+    browser,
+    prisma,
+    request,
+    logger,
+  }) => {
+    const testEmail = `e2e-reset-pw-${Date.now()}@hrtest.local`
+    const originalPassword = STRONG_PASSWORD
+    const newPassword = "UpdatedP@ss456!"
+    const passwordHash = (await import("bcryptjs").then((m) => m.hash(originalPassword, 4)))
+
+    // Seed a fully-onboarded user (no pending setup)
+    const testUser = await prisma.user.create({
+      data: {
+        name: "E2E Reset PW User",
+        email: testEmail,
+        passwordHash,
+        role: "VIEWER",
+        active: true,
+        mustChangePassword: false,
+      },
+    })
+
+    await clearEmailOutbox(request)
+
+    try {
+      await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+      await adminPage.waitForSelector("table tbody tr", { state: "visible" })
+
+      // Find the user row
+      const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
+      await expect(userRow).toBeVisible({ timeout: 10_000 })
+
+      // "Reset PW" button is visible for active non-pending-setup users
+      await expect(userRow.getByRole("button", { name: /reset pw/i })).toBeVisible()
+      await userRow.getByRole("button", { name: /reset pw/i }).click()
+
+      // Confirmation dialog
+      const dialog = adminPage.locator('[role="dialog"]')
+      await expect(dialog).toBeVisible()
+      await expect(dialog.getByText("Reset password?")).toBeVisible()
+      await expect(dialog.getByText("E2E Reset PW User")).toBeVisible()
+
+      await dialog.getByRole("button", { name: /^reset password$/i }).click()
+      await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
+      // Success banner
+      await expect(
+        adminPage.getByText("Password reset email sent successfully."),
+      ).toBeVisible({ timeout: 10_000 })
+
+      // DB: mustChangePassword is now true (password was blanked)
+      const updatedUser = await prisma.user.findUnique({
+        where: { id: testUser.id },
+        select: { mustChangePassword: true },
+      })
+      expect(updatedUser?.mustChangePassword).toBe(true)
+
+      // Reset email arrives in outbox
+      const resetEmail = await fetchInviteEmail(request, testEmail)
+      expect(resetEmail.to).toBe(testEmail)
+      const resetUrl = extractSetPasswordUrl(resetEmail)
+      expect(resetUrl).toContain("/set-password?token=")
+
+      // Old password no longer works
+      const ctx1 = await browser.newContext()
+      const loginPage = createLoggedPage(await ctx1.newPage(), logger)
+      try {
+        await loginPage.goto("/login", { waitUntil: "domcontentloaded" })
+        await loginPage.fill("#email", testEmail)
+        await loginPage.fill("#password", originalPassword)
+        await loginPage.click('button[type="submit"]')
+        await expect(loginPage.getByText(/invalid email or password/i)).toBeVisible({ timeout: 10_000 })
+      } finally {
+        await ctx1.close()
+      }
+
+      // Reset link allows setting a new password
+      const ctx2 = await browser.newContext()
+      const resetPage = createLoggedPage(await ctx2.newPage(), logger)
+      try {
+        await resetPage.goto(resetUrl, { waitUntil: "domcontentloaded" })
+        await expect(resetPage.getByText("Set Your Password")).toBeVisible({ timeout: 10_000 })
+        await resetPage.fill("#newPassword", newPassword)
+        await resetPage.fill("#confirmPassword", newPassword)
+        await resetPage.getByRole("button", { name: /^set password$/i }).click()
+        await expect(resetPage.getByText("Password Set Successfully")).toBeVisible({ timeout: 10_000 })
+
+        // New password works for login
+        await resetPage.getByRole("link", { name: /^sign in$/i }).click()
+        await resetPage.waitForURL(/\/login/, { timeout: 10_000 })
+        await resetPage.fill("#email", testEmail)
+        await resetPage.fill("#password", newPassword)
+        await resetPage.getByRole("button", { name: /^sign in$/i }).click()
+        await resetPage.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15_000 })
+        await expect(resetPage).not.toHaveURL(/\/settings\/password/)
+      } finally {
+        await ctx2.close()
+      }
+    } finally {
+      await prisma.user.delete({ where: { id: testUser.id } }).catch(() => {})
+    }
+  })
+})
+
 test.describe("Set-Password Error States", () => {
   test("shows error for missing token parameter", async ({ page }) => {
     await page.goto("/set-password", { waitUntil: "domcontentloaded" })
