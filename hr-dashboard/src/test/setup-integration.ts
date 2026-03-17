@@ -15,6 +15,18 @@ import {
   assertDatabaseClean,
 } from "./test-db"
 import { TestLogger } from "./logger"
+import type { Prisma } from "@/generated/prisma/client"
+
+// Re-export fixtures for test data generation
+export {
+  uniqueId,
+  uniqueEmail,
+  uniqueImportKey,
+  resetFixtureCounter,
+  TEST_DEPARTMENTS,
+  TEST_LEVELS,
+  TEST_HORIZONS,
+} from "./fixtures"
 
 // Re-export for convenience
 export {
@@ -45,10 +57,11 @@ export function setupIntegrationTests(options?: {
   verifyClean?: boolean
   logger?: boolean
 }) {
+  const isCI = process.env.CI === "true" || process.env.CI === "1"
   const {
     resetBeforeEach = true,
     resetBeforeAll = false,
-    verifyClean = false,
+    verifyClean = isCI, // auto-enable in CI to catch test pollution early
     logger = false,
   } = options ?? {}
 
@@ -107,6 +120,8 @@ export function setupIntegrationTests(options?: {
  */
 export function createTestFactories() {
   const prisma = () => getTestPrisma()
+  // Use fixtures for unique data generation
+  const fixtures = require("./fixtures") as typeof import("./fixtures")
 
   return {
     /**
@@ -123,7 +138,7 @@ export function createTestFactories() {
       return prisma().user.create({
         data: {
           name: data.name ?? "Test User",
-          email: data.email ?? `test-${Date.now()}@example.com`,
+          email: data.email ?? fixtures.uniqueEmail("user"),
           role: data.role ?? "RECRUITER",
           passwordHash: data.passwordHash ?? "hashed-password",
         },
@@ -236,7 +251,7 @@ export function createTestFactories() {
         data: {
           firstName: data.firstName ?? "Test",
           lastName: data.lastName ?? "Candidate",
-          email: data.email ?? `candidate-${Date.now()}@example.com`,
+          email: data.email ?? fixtures.uniqueEmail("candidate"),
           source: data.source ?? "LINKEDIN",
         },
       })
@@ -331,7 +346,7 @@ export function createTestFactories() {
           ...(data.jobTitle !== undefined && { jobTitle: data.jobTitle }),
           ...(data.startDate !== undefined && { startDate: data.startDate }),
           monthlyFte: data.monthlyFte ?? {},
-        },
+        } as Prisma.HeadcountProjectionUncheckedCreateInput,
       })
     },
 
@@ -376,7 +391,7 @@ export function createTestFactories() {
           ...(data.levelDifference !== undefined && { levelDifference: data.levelDifference }),
           ...(data.status !== undefined && { status: data.status }),
           ...(data.notes !== undefined && { notes: data.notes }),
-        },
+        } as Prisma.TradeoffUncheckedCreateInput,
       })
     },
   }
