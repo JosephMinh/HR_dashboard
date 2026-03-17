@@ -18,11 +18,16 @@ import { setupTestAuth } from "@/test/test-auth"
 
 const testAuth = setupTestAuth()
 
-// Mock rate limiting to avoid Redis dependency in tests
-vi.mock("@/lib/rate-limit", () => ({
-  enforceApiRateLimit: vi.fn().mockResolvedValue(null),
-  enforceRouteRateLimit: vi.fn().mockResolvedValue(null),
-}))
+// Ensure route handlers share the test Prisma pool to avoid deadlocks
+vi.mock("@/lib/prisma", async () => {
+  const { getTestPrisma } = await import("@/test/test-db")
+  return { prisma: getTestPrisma() }
+})
+
+// Pass-through mock preserves Vitest module re-evaluation required by auth mock.
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  return importOriginal()
+})
 
 describe("Integration: Self-Service API", () => {
   setupIntegrationTests()

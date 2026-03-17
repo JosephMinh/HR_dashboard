@@ -5,26 +5,32 @@
  * exercises assertion helpers, link extraction, and failure injection.
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import {
   setupIntegrationTests,
   setupEmailHarness,
+  setupRateLimitHarness,
   getTestPrisma,
 } from "@/test/setup-integration"
 import { setupTestAuth } from "@/test/test-auth"
 import { sendEmail } from "@/lib/email"
 
-// Mock rate limiting to avoid Redis dependency
-import { vi } from "vitest"
-vi.mock("@/lib/rate-limit", () => ({
-  enforceApiRateLimit: vi.fn().mockResolvedValue(null),
-  enforceRouteRateLimit: vi.fn().mockResolvedValue(null),
-}))
+// Ensure route handlers share the test Prisma pool to avoid deadlocks
+vi.mock("@/lib/prisma", async () => {
+  const { getTestPrisma } = await import("@/test/test-db")
+  return { prisma: getTestPrisma() }
+})
+
+// Pass-through mock for Vitest module re-evaluation compatibility
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  return importOriginal()
+})
 
 describe("Email Harness", () => {
   setupIntegrationTests()
   const testAuth = setupTestAuth()
   const emailHarness = setupEmailHarness()
+  const _rateLimit = setupRateLimitHarness()
 
   // =========================================================================
   // Outbox capture

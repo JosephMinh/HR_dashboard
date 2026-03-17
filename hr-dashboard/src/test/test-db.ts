@@ -63,13 +63,17 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
  */
 export function getTestPrisma(): PrismaClient {
   if (!testPrisma) {
-    const adapter = new PrismaPg({ connectionString: TEST_DATABASE_URL })
+    // Use a single-connection pool to prevent lock contention between
+    // TRUNCATE (AccessExclusiveLock) and concurrent DML from other pool
+    // connections. Tests run sequentially, so parallelism isn't needed.
+    const adapter = new PrismaPg({ connectionString: TEST_DATABASE_URL, max: 1 })
     testPrisma = new PrismaClient({ adapter })
     // Make `@/lib/prisma` reuse this same client instead of creating its own
     globalForPrisma.prisma = testPrisma
   }
   return testPrisma
 }
+
 
 /**
  * Disconnect the test Prisma client
@@ -84,31 +88,24 @@ export async function disconnectTestPrisma(): Promise<void> {
 }
 
 /**
- * Reset the test database to a clean state
- * Uses Prisma's transaction to truncate all tables
+ * Reset the test database to a clean state.
+ *
+ * Uses Prisma deleteMany in dependency order (children before parents).
+ * This avoids the AccessExclusiveLock that TRUNCATE requires, which causes
+ * intermittent deadlocks and FK constraint violations when PrismaPg's
+ * connection pool has outstanding connections.
  */
 export async function resetDatabase(): Promise<void> {
   const prisma = getTestPrisma()
-
-  // Disable foreign key checks, truncate all tables, re-enable
-  // Using raw SQL for performance
-  await prisma.$executeRawUnsafe(`
-    DO $$
-    DECLARE
-      r RECORD;
-    BEGIN
-      -- Disable triggers
-      SET session_replication_role = 'replica';
-
-      -- Truncate all tables in the current schema
-      FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename != '_prisma_migrations') LOOP
-        EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
-      END LOOP;
-
-      -- Re-enable triggers
-      SET session_replication_role = 'origin';
-    END $$;
-  `)
+  // Delete in dependency order: children first, parents last
+  await prisma.auditLog.deleteMany()
+  await prisma.setPasswordToken.deleteMany()
+  await prisma.tradeoff.deleteMany()
+  await prisma.headcountProjection.deleteMany()
+  await prisma.application.deleteMany()
+  await prisma.candidate.deleteMany()
+  await prisma.job.deleteMany()
+  await prisma.user.deleteMany()
 }
 
 /**

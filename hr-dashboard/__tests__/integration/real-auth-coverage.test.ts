@@ -23,25 +23,33 @@ import {
   setupIntegrationTests,
   getTestPrisma,
   createTestFactories,
+  setupEmailHarness,
+  setupRateLimitHarness,
 } from "@/test/setup-integration"
 import { setupTestAuth } from "@/test/test-auth"
 
 // Real auth via setupTestAuth — exercises refreshJwtTokenFromDatabase
 const testAuth = setupTestAuth()
 
-// Email and rate-limit still mocked (separate harness beads)
-vi.mock("@/lib/email", () => ({
-  sendEmail: vi.fn().mockResolvedValue({ success: true, messageId: "test-msg" }),
-}))
+// Ensure route handlers share the test Prisma pool to avoid deadlocks
+vi.mock("@/lib/prisma", async () => {
+  const { getTestPrisma } = await import("@/test/test-db")
+  return { prisma: getTestPrisma() }
+})
 
-vi.mock("@/lib/rate-limit", () => ({
-  enforceApiRateLimit: vi.fn().mockResolvedValue(null),
-  enforceRouteRateLimit: vi.fn().mockResolvedValue(null),
-}))
+// Pass-through mocks for Vitest module re-evaluation compatibility
+vi.mock("@/lib/email", async (importOriginal) => {
+  return importOriginal()
+})
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  return importOriginal()
+})
 
 describe("Real Auth: Integration Coverage", () => {
   setupIntegrationTests()
   const factories = createTestFactories()
+  const _emailHarness = setupEmailHarness()
+  const _rateLimit = setupRateLimitHarness()
 
   // ========================================================================
   // 1. Admin User Management — MANAGE_USERS permission

@@ -51,6 +51,7 @@ export function buildSecurityHeaders(isProductionEnvironment: boolean): Security
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg"],
   async headers() {
     return [
       {

@@ -25,6 +25,13 @@ import {
   validateSetPasswordToken,
 } from "@/lib/password-setup-tokens"
 
+// Ensure route handlers use the shared test PrismaClient so they can see rows
+// created by test setup (avoids PrismaPg pool visibility / P2025 issues).
+vi.mock("@/lib/prisma", async () => {
+  const { getTestPrisma } = await import("@/test/test-db")
+  return { prisma: getTestPrisma() }
+})
+
 const { sendEmailMock } = vi.hoisted(() => ({
   sendEmailMock: vi.fn(),
 }))

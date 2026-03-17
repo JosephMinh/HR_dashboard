@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { compare, hash } from 'bcryptjs'
 
 import {
@@ -9,26 +9,24 @@ import {
   createTestFactories,
   getTestPrisma,
   setupIntegrationTests,
+  setupRateLimitHarness,
 } from '@/test/setup-integration'
 
-const { enforceRouteRateLimitMock, getClientAddressMock } = vi.hoisted(() => ({
-  enforceRouteRateLimitMock: vi.fn(),
-  getClientAddressMock: vi.fn(),
-}))
+// Ensure route handlers share the test Prisma pool to avoid deadlocks
+vi.mock("@/lib/prisma", async () => {
+  const { getTestPrisma } = await import("@/test/test-db")
+  return { prisma: getTestPrisma() }
+})
 
-vi.mock('@/lib/rate-limit', () => ({
-  enforceRouteRateLimit: enforceRouteRateLimitMock,
-  getClientAddress: getClientAddressMock,
-}))
+// Pass-through mock for Vitest module re-evaluation compatibility
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  return importOriginal()
+})
 
 describe('Integration: Password Setup API', () => {
   setupIntegrationTests()
   const factories = createTestFactories()
-
-  beforeEach(() => {
-    enforceRouteRateLimitMock.mockResolvedValue(null)
-    getClientAddressMock.mockReturnValue('127.0.0.1')
-  })
+  const _rateLimit = setupRateLimitHarness()
 
   describe('GET /api/password-setup', () => {
     it('returns valid=true and a masked email for an active token', async () => {
@@ -41,7 +39,6 @@ describe('Integration: Password Setup API', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(enforceRouteRateLimitMock).toHaveBeenCalled()
 
       const data = await response.json()
       expect(data.valid).toBe(true)
