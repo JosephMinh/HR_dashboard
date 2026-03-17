@@ -165,6 +165,7 @@ export async function getTableCounts(): Promise<Record<string, number>> {
 /**
  * Assert the database is completely empty (all tables have 0 rows).
  * Throws with a detailed report if any table has leftover data.
+ * Call after resetDatabase() to verify cleanup in critical tests.
  */
 export async function assertDatabaseClean(): Promise<void> {
   const counts = await getTableCounts()
@@ -175,7 +176,9 @@ export async function assertDatabaseClean(): Promise<void> {
       .map(([table, count]) => `  ${table}: ${count} rows`)
       .join("\n")
     throw new Error(
-      `Database is not clean after reset. Leftover data found:\n${details}`,
+      `Database is not clean after reset. Leftover data found:\n${details}\n\n` +
+        "This indicates test pollution — a previous test's data survived cleanup.\n" +
+        "Check that resetDatabase() completed without error before this test ran.",
     )
   }
 }
@@ -232,7 +235,70 @@ export async function isDatabaseReady(): Promise<boolean> {
 }
 
 /**
- * Wait for the test database to be ready with timeout
+ * Diagnose why the test database is unreachable.
+ * Checks Docker, container state, and port availability.
+ */
+function diagnoseDatabaseFailure(): string {
+  const lines: string[] = [
+    `Test database not reachable at: ${TEST_DATABASE_URL}`,
+    "",
+    "Diagnostics:",
+  ]
+
+  try {
+    execSync("docker info", { stdio: "pipe" })
+    lines.push("  [OK]   Docker is running")
+  } catch {
+    lines.push(
+      "  [FAIL] Docker is not running or not installed.",
+      "         Start Docker and retry.",
+    )
+    return lines.join("\n")
+  }
+
+  try {
+    const status = execSync(
+      "docker inspect -f '{{.State.Status}}' hr-dashboard-test-db 2>/dev/null",
+      { stdio: "pipe", encoding: "utf-8" },
+    ).trim()
+    if (status === "running") {
+      lines.push(`  [OK]   Container hr-dashboard-test-db is ${status}`)
+    } else {
+      lines.push(
+        `  [FAIL] Container hr-dashboard-test-db exists but status is: ${status}`,
+        "         Run: npm run test:db:up",
+      )
+      return lines.join("\n")
+    }
+  } catch {
+    lines.push(
+      "  [FAIL] Container hr-dashboard-test-db not found.",
+      "         Run: npm run test:db:up",
+    )
+    return lines.join("\n")
+  }
+
+  try {
+    execSync("nc -z localhost 5433", { stdio: "pipe", timeout: 2000 })
+    lines.push("  [OK]   Port 5433 is accepting connections")
+  } catch {
+    lines.push(
+      "  [FAIL] Port 5433 is not accepting connections.",
+      "         The container may still be starting. Check: docker logs hr-dashboard-test-db",
+    )
+  }
+
+  lines.push(
+    "",
+    "If the container is running and healthy but tests still fail,",
+    "check the container logs: docker logs hr-dashboard-test-db",
+  )
+  return lines.join("\n")
+}
+
+/**
+ * Wait for the test database to be ready with timeout.
+ * On failure, runs diagnostics and provides actionable error messages.
  */
 export async function waitForDatabase(
   timeoutMs = 30000,
@@ -247,13 +313,9 @@ export async function waitForDatabase(
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 
+  const diagnosis = diagnoseDatabaseFailure()
   throw new Error(
-    `Test database not ready after ${timeoutMs}ms.\n` +
-      `Connection: ${TEST_DATABASE_URL}\n` +
-      `Troubleshooting:\n` +
-      `  1. Is Docker running?\n` +
-      `  2. Is the test container up? Run: docker ps | grep hr-dashboard-test-db\n` +
-      `  3. Start it with: npm run test:db:up`,
+    `Database not ready after ${timeoutMs}ms.\n\n${diagnosis}`,
   )
 }
 
