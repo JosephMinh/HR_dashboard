@@ -4,14 +4,11 @@
 # Services:
 #   - postgres: Main development database
 #   - minio: S3-compatible storage for resume uploads
-#   - mailpit: Local SMTP server with web UI for email testing
 #
 # Ports:
 #   - 5432: PostgreSQL
 #   - 9000: MinIO API
 #   - 9001: MinIO Console (web UI)
-#   - 1025: Mailpit SMTP
-#   - 8025: Mailpit Web UI
 
 services:
   postgres:
@@ -46,22 +43,6 @@ services:
       - minio-dev-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: hr-dashboard-dev-mailpit
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    environment:
-      MP_SMTP_AUTH_ACCEPT_ANY: "1"
-      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8025/livez"]
       interval: 5s
       timeout: 5s
       retries: 5
