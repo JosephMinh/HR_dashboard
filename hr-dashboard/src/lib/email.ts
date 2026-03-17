@@ -67,7 +67,7 @@ function isSmtpConfigured(): boolean {
 // Test outbox (in-memory capture for integration/E2E)
 // ---------------------------------------------------------------------------
 
-const testOutbox: CapturedEmail[] = []
+let testOutbox: CapturedEmail[] = []
 
 export function getTestOutbox(): readonly CapturedEmail[] {
   return testOutbox
@@ -75,6 +75,7 @@ export function getTestOutbox(): readonly CapturedEmail[] {
 
 export function clearTestOutbox(): void {
   testOutbox.length = 0
+  testOutbox = []
 }
 
 export function getLastTestEmail(): CapturedEmail | undefined {

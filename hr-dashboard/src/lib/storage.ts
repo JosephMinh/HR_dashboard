@@ -2,6 +2,51 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, List
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { randomUUID } from 'crypto'
 
+// ---------------------------------------------------------------------------
+// Test mode: in-memory object store (mirrors email.ts test outbox pattern)
+// ---------------------------------------------------------------------------
+// Activated explicitly by calling _enableTestStore(). Unit tests that use
+// vi.spyOn(S3Client.prototype, 'send') are unaffected because the store
+// is disabled by default — only the storage-harness enables it.
+
+export interface StoredTestObject {
+  key: string
+  contentType: string
+  size: number
+  createdAt: Date
+}
+
+let _testStoreEnabled = false
+const testStore = new Map<string, StoredTestObject>()
+
+export function _enableTestStore(): void {
+  _testStoreEnabled = true
+}
+
+export function _disableTestStore(): void {
+  _testStoreEnabled = false
+  testStore.clear()
+}
+
+export function getTestStore(): ReadonlyMap<string, StoredTestObject> {
+  return testStore
+}
+
+export function clearTestStore(): void {
+  testStore.clear()
+}
+
+type StorageInterceptor = (
+  op: 'upload' | 'download' | 'delete' | 'list',
+  key: string,
+) => { error: string; throw?: Error } | null
+
+let _testInterceptor: StorageInterceptor | null = null
+
+export function _setStorageTestInterceptor(fn: StorageInterceptor | null): void {
+  _testInterceptor = fn
+}
+
 export interface StorageConfig {
   bucket: string
   region?: string
@@ -178,6 +223,15 @@ export async function generateUploadUrl(
   contentType: string,
   expiresInSeconds = UPLOAD_URL_EXPIRY_SECONDS
 ): Promise<string> {
+  if (_testStoreEnabled) {
+    if (_testInterceptor) {
+      const result = _testInterceptor('upload', key)
+      if (result) throw result.throw ?? new Error(result.error)
+    }
+    testStore.set(key, { key, contentType, size: 0, createdAt: new Date() })
+    return `https://test-storage.local/${key}?X-Amz-Expires=${expiresInSeconds}`
+  }
+
   const { client, bucket } = createStorageContext()
 
   const command = new PutObjectCommand({
@@ -204,6 +258,14 @@ export async function generateDownloadUrl(
   key: string,
   expiresInSeconds = DOWNLOAD_URL_EXPIRY_SECONDS
 ): Promise<string> {
+  if (_testStoreEnabled) {
+    if (_testInterceptor) {
+      const result = _testInterceptor('download', key)
+      if (result) throw result.throw ?? new Error(result.error)
+    }
+    return `https://test-storage.local/${key}?X-Amz-Expires=${expiresInSeconds}`
+  }
+
   const { client, bucket } = createStorageContext()
 
   const command = new GetObjectCommand({
@@ -220,6 +282,15 @@ export async function generateDownloadUrl(
  * @param key - Object key to delete
  */
 export async function deleteObject(key: string): Promise<void> {
+  if (_testStoreEnabled) {
+    if (_testInterceptor) {
+      const result = _testInterceptor('delete', key)
+      if (result) throw result.throw ?? new Error(result.error)
+    }
+    testStore.delete(key)
+    return
+  }
+
   const { client, bucket } = createStorageContext()
 
   const command = new DeleteObjectCommand({
@@ -296,6 +367,25 @@ export async function listObjects(
 ): Promise<StorageObject[]> {
   if (maxKeys !== undefined && maxKeys <= 0) {
     return []
+  }
+
+  if (_testStoreEnabled) {
+    if (_testInterceptor) {
+      const result = _testInterceptor('list', prefix)
+      if (result) throw result.throw ?? new Error(result.error)
+    }
+    const objects: StorageObject[] = []
+    testStore.forEach((obj) => {
+      if (obj.key.startsWith(prefix)) {
+        objects.push({
+          key: obj.key,
+          lastModified: obj.createdAt,
+          size: obj.size,
+        })
+      }
+    })
+    const sorted = objects.sort(compareStorageObjectsByAge)
+    return maxKeys === undefined ? sorted : sorted.slice(0, maxKeys)
   }
 
   const { client, bucket } = createStorageContext()
