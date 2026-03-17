@@ -81,6 +81,16 @@ export function getLastTestEmail(): CapturedEmail | undefined {
   return testOutbox[testOutbox.length - 1]
 }
 
+// Test-only interceptor for failure injection.
+// When set, called before normal test-mode capture.
+// Return an EmailResult to short-circuit (simulate failure), or null to proceed normally.
+type TestInterceptor = (payload: EmailPayload) => EmailResult | null
+let _testInterceptor: TestInterceptor | null = null
+
+export function _setTestInterceptor(fn: TestInterceptor | null): void {
+  _testInterceptor = fn
+}
+
 // ---------------------------------------------------------------------------
 // SMTP transport (lazy singleton)
 // ---------------------------------------------------------------------------
@@ -166,6 +176,12 @@ function logDevPreview(payload: EmailPayload): void {
 export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
   // --- Test mode: capture to in-memory outbox ---
   if (isTestEnv()) {
+    // Check interceptor first (failure injection for testing error paths)
+    if (_testInterceptor) {
+      const intercepted = _testInterceptor(payload)
+      if (intercepted) return intercepted
+    }
+
     const captured: CapturedEmail = {
       ...payload,
       from: getSenderAddress(),

@@ -40,6 +40,10 @@ export {
 } from "./test-db"
 export { TestLogger } from "./logger"
 export { createMockSession } from "./auth"
+export { setupTestAuth, createAuthHarness } from "./auth-harness"
+export type { TestAuthHarness, AuthHarness, TestUser } from "./auth-harness"
+export { setupEmailHarness } from "./email-harness"
+export type { EmailHarness } from "./email-harness"
 
 /**
  * Setup integration test environment
