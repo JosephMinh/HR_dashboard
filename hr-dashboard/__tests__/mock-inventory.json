@@ -1,0 +1,315 @@
+{
+  "meta": {
+    "bead": "hr-kfwh.1",
+    "generated": "2026-03-17",
+    "author": "HazyBay",
+    "scanned_files": {
+      "unit": 33,
+      "integration": 22,
+      "e2e": 13,
+      "test_infra": 6,
+      "total": 74
+    },
+    "files_with_mocks": 19,
+    "files_without_mocks": 55
+  },
+  "inventory": [
+    {
+      "id": "U01",
+      "file": "__tests__/unit/jobs-route.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/auth", "layer": "auth", "risk": "high", "disposition": "replaceable-now", "reason": "Returns fabricated session; skips refreshJwtTokenFromDatabase, active checks, role DB lookups"},
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-now", "reason": "Replaces all Prisma queries with vi.fn(); misses schema drift, query bugs, constraint violations"},
+        {"type": "vi.mock", "target": "@/lib/audit", "layer": "audit", "risk": "medium", "disposition": "replaceable-later", "reason": "Silences audit logging; acceptable in unit tests focused on route logic"}
+      ],
+      "vi_fn_count": 6
+    },
+    {
+      "id": "U02",
+      "file": "__tests__/unit/auth-enforcement-api.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/auth", "layer": "auth", "risk": "high", "disposition": "replaceable-now", "reason": "Fabricated session; same as U01"},
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-now", "reason": "All DB ops mocked"},
+        {"type": "vi.mock", "target": "@/lib/audit", "layer": "audit", "risk": "medium", "disposition": "replaceable-later", "reason": "Silences audit"},
+        {"type": "vi.mock", "target": "@/lib/storage", "layer": "storage", "risk": "high", "disposition": "replaceable-later", "reason": "Mocks S3 URL generation; hides presigned URL format, expiry, key validation"},
+        {"type": "vi.mock", "target": "@/lib/validations", "layer": "validation", "risk": "medium", "disposition": "replaceable-now", "reason": "Bypasses Zod schema validation; integration tests already cover real validation"}
+      ],
+      "vi_fn_count": 10
+    },
+    {
+      "id": "U03",
+      "file": "__tests__/unit/applications-detail-route.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/auth", "layer": "auth", "risk": "high", "disposition": "replaceable-now", "reason": "Fabricated session"},
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-now", "reason": "All DB ops mocked"},
+        {"type": "vi.mock", "target": "@/lib/audit", "layer": "audit", "risk": "medium", "disposition": "replaceable-later", "reason": "Silences audit"},
+        {"type": "vi.mock", "target": "@/lib/validations", "layer": "validation", "risk": "medium", "disposition": "replaceable-now", "reason": "Bypasses Zod validation"}
+      ],
+      "vi_fn_count": 7
+    },
+    {
+      "id": "U04",
+      "file": "__tests__/unit/candidate-detail-route.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "zod", "layer": "validation", "risk": "high", "disposition": "remove", "reason": "Mocking Zod itself is dangerous; hides schema validation bugs. Tests should use real Zod"},
+        {"type": "vi.mock", "target": "@/lib/auth", "layer": "auth", "risk": "high", "disposition": "replaceable-now", "reason": "Fabricated session"},
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-now", "reason": "All DB ops mocked"},
+        {"type": "vi.mock", "target": "@/lib/audit", "layer": "audit", "risk": "medium", "disposition": "replaceable-later", "reason": "Silences audit"},
+        {"type": "vi.mock", "target": "@/lib/storage", "layer": "storage", "risk": "high", "disposition": "replaceable-later", "reason": "Mocks S3 ops"},
+        {"type": "vi.mock", "target": "@/lib/validations", "layer": "validation", "risk": "medium", "disposition": "replaceable-now", "reason": "Bypasses validation"}
+      ],
+      "vi_fn_count": 5
+    },
+    {
+      "id": "U05",
+      "file": "__tests__/unit/candidates-route.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/auth", "layer": "auth", "risk": "high", "disposition": "replaceable-now", "reason": "Fabricated session"},
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-now", "reason": "All DB ops mocked"},
+        {"type": "vi.mock", "target": "@/lib/validations", "layer": "validation", "risk": "medium", "disposition": "replaceable-now", "reason": "Bypasses validation"},
+        {"type": "vi.mock", "target": "@/lib/storage", "layer": "storage", "risk": "medium", "disposition": "replaceable-later", "reason": "Only import, not actively used in GET route"}
+      ],
+      "vi_fn_count": 3
+    },
+    {
+      "id": "U06",
+      "file": "__tests__/unit/candidates-post-route.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/auth", "layer": "auth", "risk": "high", "disposition": "replaceable-now", "reason": "Fabricated session"},
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-now", "reason": "All DB ops mocked including transactions"},
+        {"type": "vi.mock", "target": "@/lib/audit", "layer": "audit", "risk": "medium", "disposition": "replaceable-later", "reason": "Silences audit"},
+        {"type": "vi.mock", "target": "@/lib/validations", "layer": "validation", "risk": "medium", "disposition": "replaceable-now", "reason": "Bypasses validation"},
+        {"type": "vi.mock", "target": "@/lib/storage", "layer": "storage", "risk": "medium", "disposition": "replaceable-later", "reason": "Mocks storage import"}
+      ],
+      "vi_fn_count": 9
+    },
+    {
+      "id": "U07",
+      "file": "__tests__/unit/cleanup-orphaned-resumes-route.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-later", "reason": "Mocks candidate lookup; needed for S3 listing test isolation"},
+        {"type": "vi.mock", "target": "@/lib/storage", "layer": "storage", "risk": "high", "disposition": "replaceable-later", "reason": "Mocks listObjects and deleteObject; hides real S3 interaction"}
+      ],
+      "vi_fn_count": 3
+    },
+    {
+      "id": "U08",
+      "file": "__tests__/unit/auth-config.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "next-auth", "layer": "auth", "risk": "medium", "disposition": "necessary", "reason": "Tests NextAuth config callbacks; needs to intercept NextAuth() to extract authorize/jwt/session callbacks"},
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "high", "disposition": "replaceable-now", "reason": "Mocks user findUnique for credential verification"}
+      ],
+      "vi_fn_count": 2
+    },
+    {
+      "id": "U09",
+      "file": "__tests__/unit/email-service.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "nodemailer", "layer": "email", "risk": "medium", "disposition": "replaceable-later", "reason": "Mocks SMTP transport; real SMTP tested in integration via email harness"},
+        {"type": "vi.spyOn", "target": "console.log", "layer": "logging", "risk": "low", "disposition": "necessary", "reason": "Verifies console output in dev mode"}
+      ],
+      "vi_fn_count": 3
+    },
+    {
+      "id": "U10",
+      "file": "__tests__/unit/api-client.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.stubGlobal", "target": "fetch", "layer": "network", "risk": "medium", "disposition": "necessary", "reason": "Tests client-side API wrapper; fetch must be stubbed in Node environment"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "U11",
+      "file": "__tests__/unit/query-hooks.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@tanstack/react-query", "layer": "ui-state", "risk": "low", "disposition": "necessary", "reason": "Tests React Query hook wrappers; must mock QueryClient in unit context"},
+        {"type": "vi.mock", "target": "@/lib/api-client", "layer": "network", "risk": "low", "disposition": "necessary", "reason": "Tests hook logic independent of network"}
+      ],
+      "vi_fn_count": 2
+    },
+    {
+      "id": "U12",
+      "file": "__tests__/unit/all-jobs-table.test.tsx",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "next/navigation", "layer": "ui-nav", "risk": "low", "disposition": "necessary", "reason": "No real Next.js router in jsdom"},
+        {"type": "vi.mock", "target": "@/hooks/queries", "layer": "ui-state", "risk": "low", "disposition": "necessary", "reason": "Component isolation from data fetching"}
+      ],
+      "vi_fn_count": 4
+    },
+    {
+      "id": "U13",
+      "file": "__tests__/unit/candidates-pipeline-cache.test.tsx",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/api-client", "layer": "network", "risk": "low", "disposition": "necessary", "reason": "Component test isolation"},
+        {"type": "vi.mock", "target": "next/link", "layer": "ui-nav", "risk": "low", "disposition": "necessary", "reason": "No real Next.js router in jsdom"},
+        {"type": "vi.mock", "target": "next/navigation", "layer": "ui-nav", "risk": "low", "disposition": "necessary", "reason": "No real Next.js router in jsdom"},
+        {"type": "vi.mock", "target": "@/lib/status-config", "layer": "ui-config", "risk": "low", "disposition": "necessary", "reason": "Controls pipeline stage rendering"},
+        {"type": "vi.mock", "target": "@/hooks/queries", "layer": "ui-state", "risk": "low", "disposition": "necessary", "reason": "Component isolation from data fetching"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "U14",
+      "file": "__tests__/unit/add-candidate-dialog.test.tsx",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "@tanstack/react-query", "layer": "ui-state", "risk": "low", "disposition": "necessary", "reason": "Component isolation"},
+        {"type": "vi.mock", "target": "@/hooks/queries", "layer": "ui-state", "risk": "low", "disposition": "necessary", "reason": "Component isolation"},
+        {"type": "vi.mock", "target": "next/navigation", "layer": "ui-nav", "risk": "low", "disposition": "necessary", "reason": "No real router in jsdom"}
+      ],
+      "vi_fn_count": 2
+    },
+    {
+      "id": "U15",
+      "file": "__tests__/unit/premium-ux-interactions.test.tsx",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "next/navigation", "layer": "ui-nav", "risk": "low", "disposition": "necessary", "reason": "No real router in jsdom"}
+      ],
+      "vi_fn_count": 2
+    },
+    {
+      "id": "U16",
+      "file": "__tests__/unit/candidates-page.test.tsx",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "next/navigation", "layer": "ui-nav", "risk": "low", "disposition": "necessary", "reason": "No real router in jsdom"}
+      ],
+      "vi_fn_count": 2
+    },
+    {
+      "id": "U17",
+      "file": "__tests__/unit/form-ux-regressions.test.tsx",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.mock", "target": "next/navigation", "layer": "ui-nav", "risk": "low", "disposition": "necessary", "reason": "No real router in jsdom"},
+        {"type": "vi.mock", "target": "next-auth/react", "layer": "auth", "risk": "low", "disposition": "necessary", "reason": "Tests form UX, not auth flow; signIn mock for form submission"},
+        {"type": "vi.mock", "target": "@/hooks/queries", "layer": "ui-state", "risk": "low", "disposition": "necessary", "reason": "Component isolation"}
+      ],
+      "vi_fn_count": 2
+    },
+    {
+      "id": "U18",
+      "file": "__tests__/unit/storage-list-objects.test.ts",
+      "suite": "unit",
+      "mocks": [
+        {"type": "vi.spyOn", "target": "S3Client.prototype.send", "layer": "storage", "risk": "medium", "disposition": "replaceable-later", "reason": "Spies on S3 SDK; tests formatting logic, not real S3 interaction"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I01",
+      "file": "src/test/test-auth.ts",
+      "suite": "test-infra",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/auth", "layer": "auth", "risk": "low", "disposition": "necessary", "reason": "Central auth harness; reads real user state from test DB; exercises active/role/mustChangePassword checks"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I02",
+      "file": "__tests__/integration/resume-upload.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/storage", "layer": "storage", "risk": "high", "disposition": "replaceable-later", "reason": "Mocks presigned URL generation; hides S3 key format, signature, expiry issues"}
+      ],
+      "vi_fn_count": 2
+    },
+    {
+      "id": "I03",
+      "file": "__tests__/integration/email-harness.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to test DB pool; real queries execute against real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through for module re-evaluation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I04",
+      "file": "__tests__/integration/password-setup-api.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects to test DB pool"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I05",
+      "file": "__tests__/integration/real-auth-coverage.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects to test DB pool"},
+        {"type": "vi.mock", "target": "@/lib/email", "layer": "email", "risk": "low", "disposition": "necessary", "reason": "Pass-through; real email not available in test env"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I06",
+      "file": "__tests__/integration/users-admin-api.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects to test DB pool"},
+        {"type": "vi.mock", "target": "@/lib/email", "layer": "email", "risk": "low", "disposition": "necessary", "reason": "Pass-through; prevents email delivery failures"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I07",
+      "file": "__tests__/integration/users-self-service.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects to test DB pool"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through"}
+      ],
+      "vi_fn_count": 0
+    }
+  ],
+  "summary": {
+    "by_layer": {
+      "auth": {"count": 9, "high_risk": 7, "necessary": 2, "replaceable_now": 6, "replaceable_later": 0, "remove": 0},
+      "db": {"count": 10, "high_risk": 7, "necessary": 5, "replaceable_now": 7, "replaceable_later": 1, "remove": 0},
+      "storage": {"count": 6, "high_risk": 3, "necessary": 0, "replaceable_now": 0, "replaceable_later": 5, "remove": 0},
+      "validation": {"count": 6, "high_risk": 1, "necessary": 0, "replaceable_now": 5, "replaceable_later": 0, "remove": 1},
+      "audit": {"count": 4, "high_risk": 0, "necessary": 0, "replaceable_now": 0, "replaceable_later": 4, "remove": 0},
+      "email": {"count": 3, "high_risk": 0, "necessary": 2, "replaceable_now": 0, "replaceable_later": 1, "remove": 0},
+      "rate-limit": {"count": 4, "high_risk": 0, "necessary": 4, "replaceable_now": 0, "replaceable_later": 0, "remove": 0},
+      "ui-nav": {"count": 7, "high_risk": 0, "necessary": 7, "replaceable_now": 0, "replaceable_later": 0, "remove": 0},
+      "ui-state": {"count": 6, "high_risk": 0, "necessary": 6, "replaceable_now": 0, "replaceable_later": 0, "remove": 0},
+      "network": {"count": 2, "high_risk": 0, "necessary": 2, "replaceable_now": 0, "replaceable_later": 0, "remove": 0},
+      "logging": {"count": 1, "high_risk": 0, "necessary": 1, "replaceable_now": 0, "replaceable_later": 0, "remove": 0},
+      "ui-config": {"count": 1, "high_risk": 0, "necessary": 1, "replaceable_now": 0, "replaceable_later": 0, "remove": 0}
+    },
+    "by_disposition": {
+      "necessary": 30,
+      "replaceable_now": 18,
+      "replaceable_later": 11,
+      "remove": 1
+    },
+    "by_risk": {
+      "high": 18,
+      "medium": 12,
+      "low": 30
+    },
+    "total_vi_mock_calls": 60,
+    "total_vi_fn_calls": 55,
+    "total_vi_spyon_calls": 4,
+    "total_vi_stubglobal_calls": 3
+  }
+}
