@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && prisma db seed && next build",
+    "build": "prisma generate && (DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate resolve --applied 20260316000000_init || true) && DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate deploy && prisma db seed && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "bunx vitest run",
