@@ -98,6 +98,10 @@ async function createCandidateViaUI(
 /**
  * Attach an existing candidate to a job using the "Add Candidate" dialog.
  * Assumes the page is currently on /jobs/<jobId>.
+ *
+ * The dialog has a 2-step flow:
+ *  1. Type to search → click result to select (shows "Selected" badge + preview panel)
+ *  2. Click "Add to Job" to confirm and close
  */
 async function attachCandidateViaDialog(
   page: Page,
@@ -113,10 +117,14 @@ async function attachCandidateViaDialog(
   await searchInput.fill(candidateFirstName)
   await page.waitForTimeout(450) // debounce
 
+  // Step 1: Click candidate result to select (aria-label: "Select FirstName LastName")
   await dialog.getByRole("button", { name: new RegExp(candidateFullName) }).click()
 
-  // Dialog should close after selection
-  await expect(dialog).not.toBeVisible({ timeout: 5_000 })
+  // Step 2: Confirm with "Add to Job" button
+  await dialog.getByRole("button", { name: /add to job/i }).click()
+
+  // Dialog closes after successful attach
+  await expect(dialog).not.toBeVisible({ timeout: 8_000 })
 }
 
 /**
