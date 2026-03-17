@@ -248,29 +248,34 @@ Deactivating a user does not invalidate their active JWT session (up to 4-hour T
 | `/api/upload/resume/:key` | GET | Get signed download URL |
 | `/api/cron/cleanup-orphaned-resumes` | GET | Delete orphaned resume objects (auth: `CRON_SECRET`) |
 | `/api/test/email-outbox` | GET/DELETE | Test-only: inspect/clear captured emails (`NODE_ENV=test` only) |
+| `/api/test/runtime-failures` | POST | Test-only: inject email/storage failure conditions for E2E failure-path tests |
 
 ## Repository Structure
 
 ```
 hr-dashboard/
-├── prisma/                # Schema, seed, config
+├── prisma/                # Schema, seed, migrations, WFP importer
 ├── src/
 │   ├── app/               # App Router pages and API routes
 │   │   ├── api/           # Route handlers
 │   │   ├── admin/users/   # User management page
 │   │   ├── set-password/  # Public token-based password setup page
 │   │   ├── settings/      # Profile and password self-service
-│   │   └── ...            # Dashboard, jobs, candidates pages
+│   │   └── ...            # Dashboard, jobs, candidates, headcount, tradeoffs pages
 │   ├── components/        # UI and layout components
 │   ├── hooks/             # TanStack Query and form hooks
-│   ├── lib/               # Auth, permissions, storage, email, rate-limit, validations
-│   └── test/              # Shared test utilities
+│   ├── lib/               # Auth, permissions, storage, email, rate-limit, validations, WFP parsers
+│   └── test/              # Shared test utilities and harnesses
 ├── __tests__/
-│   ├── unit/              # 29 test files (Vitest)
-│   ├── integration/       # 17 test files (Vitest + real DB)
-│   └── e2e/               # Playwright browser tests
-├── docs/                  # Architecture and migration docs
-├── scripts/               # setup-minio.sh, verify-security-headers.mjs
+│   ├── unit/              # 37 test files (Vitest)
+│   ├── integration/       # 28 test files (Vitest + real DB)
+│   ├── e2e/               # 20 Playwright browser specs
+│   ├── TESTING_PLAYBOOK.md
+│   ├── RISK_MATRIX.md
+│   ├── MOCKING_POLICY.md
+│   └── COVERAGE_AUDIT.md
+├── docs/                  # Architecture, migration, and testing docs
+├── scripts/               # test-all.sh, coverage-guard.sh, merge-coverage.mjs, setup-minio.sh, …
 └── docker-compose*.yml    # Dev (MinIO) and test (PostgreSQL) services
 ```
 
@@ -373,9 +378,22 @@ bun run test:integration
 bun run test:e2e:install   # Install Playwright browsers
 bun run test:e2e
 
+# All stages in one command (lint → tsc → unit → integration → E2E)
+bun run test:all
+
 # Coverage
 bun run test:coverage
 bun run test:integration:coverage
+
+# Diff-aware per-file branch coverage guard
+bun run coverage:guard                   # Run coverage + check changed files
+bun run coverage:guard:ci                # Use pre-existing reports (CI)
+```
+
+Verify test infrastructure is healthy before integration/E2E runs:
+
+```bash
+bun run test:preflight
 ```
 
 ### Available Scripts
@@ -397,27 +415,46 @@ bun run test:integration:coverage
 | `test:db:up` | Start test PostgreSQL container |
 | `test:db:down` | Stop test PostgreSQL container |
 | `test:db:push` | Push Prisma schema to test DB |
+| `test:all` | Full pipeline: lint → tsc → unit → integration → E2E |
+| `test:preflight` | Verify test infra (Docker, DB, schema, mock policy) |
+| `coverage:guard` | Diff-aware per-file branch coverage check (changed files only) |
+| `coverage:guard:ci` | Coverage guard using pre-existing reports (no re-run) |
+| `coverage:merge` | Merge unit + integration Istanbul reports into `coverage/combined/` |
+| `coverage:diff` | Show coverage delta for files changed vs base branch |
+| `coverage:diff:ci` | Coverage diff against `origin/main` (CI mode) |
 | `verify:headers` | Verify security headers on deployed URL |
 | `db:generate` | Generate Prisma client |
 | `db:push` | Push schema to database |
 | `db:migrate` | Run Prisma migrations |
 | `db:seed` | Seed database |
 | `db:studio` | Open Prisma Studio |
+| `import:wfp` | Import WFP workforce planning data from Excel workbook |
 
 ## Testing Strategy
 
 The test suite covers critical user flows across three tiers:
 
-- **Unit tests** (29 files): API route handlers, UI components, utility functions, validation schemas, rate limiting, email service, password policy
-- **Integration tests** (17 files): Prisma operations against a real PostgreSQL database, route handler integration, storage configuration, password setup flow
-- **E2E tests**: Browser-based tests for candidate workflows, job creation, stage transitions, and user management
+- **Unit tests** (37 files): API route handlers, UI components, utility functions, validation schemas, rate limiting, email service, password policy, WFP import parsers
+- **Integration tests** (28 files): Prisma operations against a real PostgreSQL database, route handler integration, email/storage/rate-limit adapter contract suites, password setup flow, system test lane
+- **E2E tests** (20 specs): Full browser journeys for onboarding, admin user management (invite, resend, reset, deactivate, delete), recruiting pipeline, failure-path scenarios (email delivery failure, storage failure, session loss), and layout/auth flows
 
 Test infrastructure:
 - Main database: port 5432
 - Test database: port 5433 (separate Docker container)
 - Integration tests use `setupIntegrationTests()` for database lifecycle
+- Shared harnesses: `setupTestAuth()`, `setupEmailHarness()`, `setupStorageHarness()`, `setupRateLimitHarness()`
+- Mock policy: mocks are restricted to narrow, justified cases (see [`__tests__/MOCKING_POLICY.md`](./__tests__/MOCKING_POLICY.md))
 
 ## Documentation
+
+### Testing
+
+- [Testing Playbook](./docs/TESTING_PLAYBOOK.md) — Quick-start, suite overview, harness usage, coverage gates, E2E fixtures, troubleshooting
+- [Risk Matrix](./__tests__/RISK_MATRIX.md) — P0/P1/P2 journey tiers, entry conditions, invariants, failure modes, artifact requirements
+- [Mocking Policy](./__tests__/MOCKING_POLICY.md) — Allowed/disallowed mock scenarios, exception workflow, quarantine registry
+- [Coverage Audit](./__tests__/COVERAGE_AUDIT.md) — Coverage inventory by layer, risk hotspot files, blind spot map
+
+### Architecture
 
 - [TanStack Migration Blueprint](./docs/TANSTACK_MIGRATION_BLUEPRINT.md)
 - [TanStack Migration Playbook](./docs/TANSTACK_MIGRATION_PLAYBOOK.md)
