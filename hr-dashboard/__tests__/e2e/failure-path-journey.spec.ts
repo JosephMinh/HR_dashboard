@@ -417,3 +417,403 @@ test.describe("Set-Password Token Failures", () => {
     await expect(page.getByText(/no setup token|missing token/i)).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Email Delivery Failure Paths
+// ---------------------------------------------------------------------------
+//
+// Uses /api/test/runtime-failures (enabled when VITEST=true on the dev server)
+// to inject real SMTP failure responses into the live email module.
+// Each test clears the interceptor in afterEach to avoid cross-test pollution.
+
+const RUNTIME_FAILURES_PATH = "/api/test/runtime-failures"
+const OUTBOX_PATH = "/api/test/email-outbox"
+
+test.describe("Email Delivery Failure Paths", { tag: "@failure-email" }, () => {
+  test.afterEach(async ({ request }) => {
+    await request.delete(RUNTIME_FAILURES_PATH)
+    await request.delete(OUTBOX_PATH)
+  })
+
+  test("invite email SMTP reject shows warning banner with manual setup link", async ({
+    adminPage,
+    request,
+    prisma,
+  }) => {
+    const testEmail = `fp-invite-reject-${Date.now()}@hrtest.local`
+
+    // Clear any prior state
+    await request.delete(OUTBOX_PATH)
+
+    // Inject SMTP reject for emails to this address
+    const injectResp = await request.post(RUNTIME_FAILURES_PATH, {
+      data: { email: { mode: "reject", match: { to: testEmail } } },
+    })
+    expect(injectResp.ok()).toBeTruthy()
+
+    await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+    await expect(adminPage.getByText("User Management")).toBeVisible({ timeout: 10_000 })
+
+    await adminPage.getByRole("button", { name: /new user/i }).click()
+    await adminPage.fill("#create-name", "Failure Email User")
+    await adminPage.fill("#create-email", testEmail)
+    await adminPage.selectOption("#create-role", "VIEWER")
+    await adminPage.getByRole("button", { name: /^create user$/i }).click()
+
+    // Warning banner — NOT the success message
+    await expect(
+      adminPage.getByText(/invite email could not be sent/i),
+    ).toBeVisible({ timeout: 10_000 })
+    await expect(
+      adminPage.getByText(/share the setup link manually/i),
+    ).toBeVisible()
+
+    // Setup URL is shown so the admin can distribute it manually
+    await expect(adminPage.getByText(/set-password\?token=/i)).toBeVisible()
+
+    // Success variant must NOT appear
+    await expect(
+      adminPage.getByText("An onboarding invite email has been sent"),
+    ).not.toBeVisible()
+
+    // User was still created in DB despite email failure
+    const user = await prisma.user.findUnique({ where: { email: testEmail } })
+    expect(user).not.toBeNull()
+    expect(user?.mustChangePassword).toBe(true)
+
+    // Cleanup
+    if (user) {
+      await prisma.user.delete({ where: { id: user.id } })
+    }
+  })
+
+  test("password reset email reject shows warning banner", async ({
+    adminPage,
+    request,
+    prisma,
+  }) => {
+    const testEmail = `fp-pwreset-${Date.now()}@hrtest.local`
+    const user = await prisma.user.create({
+      data: {
+        name: "PW Reset Failure User",
+        email: testEmail,
+        passwordHash: "$2b$04$U9K6Mqrf/1gb.VYeVdNl3eLsDDw8g.qjknF4zR5smRVa9JCuBDmBm",
+        role: "VIEWER",
+        active: true,
+        mustChangePassword: false,
+      },
+    })
+
+    try {
+      const injectResp = await request.post(RUNTIME_FAILURES_PATH, {
+        data: { email: { mode: "reject", match: { to: testEmail } } },
+      })
+      expect(injectResp.ok()).toBeTruthy()
+
+      await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+      await expect(adminPage.getByText("User Management")).toBeVisible({ timeout: 10_000 })
+
+      const searchInput = adminPage.locator('input[placeholder*="Search"]')
+      await searchInput.fill(testEmail)
+      await adminPage.waitForTimeout(600)
+
+      const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
+      await expect(userRow).toBeVisible({ timeout: 5_000 })
+
+      await userRow.getByRole("button", { name: /reset pw/i }).click()
+      await adminPage.getByRole("button", { name: /^reset password$/i }).click()
+
+      // Warning banner (email could not be delivered)
+      await expect(
+        adminPage.getByText(/could not be sent|email.*failed/i),
+      ).toBeVisible({ timeout: 10_000 })
+    } finally {
+      await prisma.user.delete({ where: { id: user.id } })
+    }
+  })
+
+  test("resend invite email timeout shows warning banner", async ({
+    adminPage,
+    request,
+    prisma,
+  }) => {
+    const testEmail = `fp-resend-${Date.now()}@hrtest.local`
+    const user = await prisma.user.create({
+      data: {
+        name: "Resend Failure User",
+        email: testEmail,
+        passwordHash: "$2b$04$U9K6Mqrf/1gb.VYeVdNl3eLsDDw8g.qjknF4zR5smRVa9JCuBDmBm",
+        role: "VIEWER",
+        active: true,
+        mustChangePassword: true, // Pending Setup — shows Resend button
+      },
+    })
+
+    try {
+      const injectResp = await request.post(RUNTIME_FAILURES_PATH, {
+        data: { email: { mode: "timeout", match: { to: testEmail } } },
+      })
+      expect(injectResp.ok()).toBeTruthy()
+
+      await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+      await expect(adminPage.getByText("User Management")).toBeVisible({ timeout: 10_000 })
+
+      const searchInput = adminPage.locator('input[placeholder*="Search"]')
+      await searchInput.fill(testEmail)
+      await adminPage.waitForTimeout(600)
+
+      const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
+      await expect(userRow).toBeVisible({ timeout: 5_000 })
+
+      // Resend Invite button appears for Pending Setup users
+      const resendBtn = userRow.getByRole("button", { name: /resend/i })
+      await expect(resendBtn).toBeVisible({ timeout: 5_000 })
+      await resendBtn.click()
+
+      // Confirm the dialog
+      const confirmBtn = adminPage.getByRole("button", { name: /resend/i }).last()
+      await confirmBtn.click()
+
+      // Warning that the invite could not be sent
+      await expect(
+        adminPage.getByText(/could not be sent|invite.*failed/i),
+      ).toBeVisible({ timeout: 10_000 })
+    } finally {
+      await prisma.user.delete({ where: { id: user.id } })
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Storage Upload Failure Paths
+// ---------------------------------------------------------------------------
+//
+// Uses page.route() to intercept /api/upload/resume at the browser level.
+// This gives per-test isolation without touching shared server-side state.
+
+test.describe("Storage Upload Failure Paths", { tag: "@failure-storage" }, () => {
+  test("storage 503 shows 'temporarily unavailable' error in upload component", async ({
+    recruiterPage,
+    prisma,
+  }) => {
+    const candidate = await prisma.candidate.findFirst()
+    if (!candidate) {
+      test.skip()
+      return
+    }
+
+    await recruiterPage.route("**/api/upload/resume", async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Resume storage is temporarily unavailable" }),
+      })
+    })
+
+    await recruiterPage.goto(`/candidates/${candidate.id}`, {
+      waitUntil: "domcontentloaded",
+    })
+    await recruiterPage.waitForLoadState("networkidle")
+
+    const fileInput = recruiterPage.locator('input[type="file"]').first()
+    if ((await fileInput.count()) === 0) {
+      test.skip()
+      return
+    }
+
+    await fileInput.setInputFiles({
+      name: "test-resume.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4 test content"),
+    })
+
+    // Error alert must appear — upload cannot silently fail
+    await expect(
+      recruiterPage.locator('[role="alert"]').filter({
+        hasText: /temporarily unavailable/i,
+      }),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // Must also offer a recovery action (retry or choose another file)
+    await expect(
+      recruiterPage.getByRole("button", { name: /retry|choose another/i }),
+    ).toBeVisible({ timeout: 5_000 })
+  })
+
+  test("storage 500 shows upload-failure error in upload component", async ({
+    recruiterPage,
+    prisma,
+  }) => {
+    const candidate = await prisma.candidate.findFirst()
+    if (!candidate) {
+      test.skip()
+      return
+    }
+
+    await recruiterPage.route("**/api/upload/resume", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Failed to generate upload URL" }),
+      })
+    })
+
+    await recruiterPage.goto(`/candidates/${candidate.id}`, {
+      waitUntil: "domcontentloaded",
+    })
+    await recruiterPage.waitForLoadState("networkidle")
+
+    const fileInput = recruiterPage.locator('input[type="file"]').first()
+    if ((await fileInput.count()) === 0) {
+      test.skip()
+      return
+    }
+
+    await fileInput.setInputFiles({
+      name: "test-resume.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4 test content"),
+    })
+
+    // Error alert must appear
+    await expect(
+      recruiterPage.locator('[role="alert"]').filter({
+        hasText: /failed.*upload|generate upload URL/i,
+      }),
+    ).toBeVisible({ timeout: 10_000 })
+  })
+
+  test("oversized file (>10MB) is rejected client-side without calling API", async ({
+    recruiterPage,
+    prisma,
+  }) => {
+    const candidate = await prisma.candidate.findFirst()
+    if (!candidate) {
+      test.skip()
+      return
+    }
+
+    let uploadApiCalled = false
+    await recruiterPage.route("**/api/upload/resume", async (route) => {
+      uploadApiCalled = true
+      await route.continue()
+    })
+
+    await recruiterPage.goto(`/candidates/${candidate.id}`, {
+      waitUntil: "domcontentloaded",
+    })
+    await recruiterPage.waitForLoadState("networkidle")
+
+    const fileInput = recruiterPage.locator('input[type="file"]').first()
+    if ((await fileInput.count()) === 0) {
+      test.skip()
+      return
+    }
+
+    // Create a buffer just over the 10MB limit
+    const oversizedBuffer = Buffer.alloc(11 * 1024 * 1024, 65) // 11MB of 'A'
+    await fileInput.setInputFiles({
+      name: "oversized.pdf",
+      mimeType: "application/pdf",
+      buffer: oversizedBuffer,
+    })
+
+    // Client-side error — no network call made
+    await expect(
+      recruiterPage.locator('[role="alert"]').filter({
+        hasText: /exceeds|10MB|size/i,
+      }),
+    ).toBeVisible({ timeout: 5_000 })
+
+    expect(uploadApiCalled).toBe(false)
+  })
+
+  test("invalid file type (.exe) is rejected client-side without calling API", async ({
+    recruiterPage,
+    prisma,
+  }) => {
+    const candidate = await prisma.candidate.findFirst()
+    if (!candidate) {
+      test.skip()
+      return
+    }
+
+    let uploadApiCalled = false
+    await recruiterPage.route("**/api/upload/resume", async (route) => {
+      uploadApiCalled = true
+      await route.continue()
+    })
+
+    await recruiterPage.goto(`/candidates/${candidate.id}`, {
+      waitUntil: "domcontentloaded",
+    })
+    await recruiterPage.waitForLoadState("networkidle")
+
+    const fileInput = recruiterPage.locator('input[type="file"]').first()
+    if ((await fileInput.count()) === 0) {
+      test.skip()
+      return
+    }
+
+    await fileInput.setInputFiles({
+      name: "malware.exe",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from("MZ binary"),
+    })
+
+    // Client-side type validation error
+    await expect(
+      recruiterPage.locator('[role="alert"]').filter({
+        hasText: /invalid file type|accepted.*pdf/i,
+      }),
+    ).toBeVisible({ timeout: 5_000 })
+
+    expect(uploadApiCalled).toBe(false)
+  })
+
+  test("rate-limited upload (429) surfaces an error — not a silent failure", async ({
+    recruiterPage,
+    prisma,
+  }) => {
+    const candidate = await prisma.candidate.findFirst()
+    if (!candidate) {
+      test.skip()
+      return
+    }
+
+    await recruiterPage.route("**/api/upload/resume", async (route) => {
+      await route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Too many requests",
+          scope: "upload",
+          retryAfterSeconds: 60,
+        }),
+        headers: { "Retry-After": "60" },
+      })
+    })
+
+    await recruiterPage.goto(`/candidates/${candidate.id}`, {
+      waitUntil: "domcontentloaded",
+    })
+    await recruiterPage.waitForLoadState("networkidle")
+
+    const fileInput = recruiterPage.locator('input[type="file"]').first()
+    if ((await fileInput.count()) === 0) {
+      test.skip()
+      return
+    }
+
+    await fileInput.setInputFiles({
+      name: "test-resume.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4 test"),
+    })
+
+    // Error must surface — 429 must not be silently swallowed
+    await expect(
+      recruiterPage.locator('[role="alert"]'),
+    ).toBeVisible({ timeout: 10_000 })
+  })
+})

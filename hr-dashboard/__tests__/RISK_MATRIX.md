@@ -52,8 +52,8 @@
 - Email not sent → user never receives invite
 - Race condition: two concurrent password sets with same token
 
-**Current E2E Coverage**: ✅ `invite-onboarding-flow.spec.ts`, `admin-delete-user.spec.ts`, `temp-password-lifecycle.spec.ts`
-**Gaps**: No audit log verification. No concurrent token-use test. No test for admin resending invite.
+**Current E2E Coverage**: ✅ `invite-onboarding-flow.spec.ts`, `admin-delete-user.spec.ts`, `temp-password-lifecycle.spec.ts`, `admin-user-management.spec.ts`, `failure-path-journey.spec.ts`
+**Gaps**: No audit log verification. No concurrent token-use test.
 **Mapped Beads**: hr-kfwh.23.1, hr-kfwh.9
 
 ---
@@ -88,8 +88,8 @@
 - Login rate limit not enforced → brute force possible
 - VIEWER can call mutation API endpoints directly (bypassing UI)
 
-**Current E2E Coverage**: ✅ `auth.spec.ts` (20 tests), `temp-password-lifecycle.spec.ts`
-**Gaps**: No direct API authorization test (VIEWER calling POST /api/jobs). No rate-limit verification. No JWT refresh test.
+**Current E2E Coverage**: ✅ `auth.spec.ts` (20 tests), `temp-password-lifecycle.spec.ts`, `failure-path-journey.spec.ts`
+**Gaps**: No rate-limit verification. No JWT refresh test.
 **Mapped Beads**: hr-kfwh.9, hr-kfwh.23.1
 
 ---
@@ -222,27 +222,29 @@
 - Target user exists and is active
 
 **Steps & Invariants**:
-1. `POST /api/users/[id]/reset-password` — generates temp password, sets `mustChangePassword: true`
-2. Temp password shown to admin (one-time display)
-3. User's existing sessions should be invalidated
-4. User logs in with temp password → gated to `/settings/password`
-5. User sets new password (policy: 12+ chars, uppercase, number, symbol)
-6. `mustChangePassword` cleared → full access restored
+1. `POST /api/users/[id]/reset-password` — issues a set-password token, sends reset email with link; only invalidates existing password hash after email succeeds
+2. Reset email delivered to user with set-password link (`/set-password?token=...`)
+3. `GET /set-password?token=...` — token validated; renders password form
+4. `POST /api/password-setup` — user sets new password, token consumed, `mustChangePassword` cleared
+5. User can now log in with new password
+6. If email delivery fails: existing password unchanged, token rolled back, 502 returned to admin
 
 **Side Effects to Verify**:
-- Password hashed with bcrypt before storage
-- Old password no longer works after reset
+- New password hashed with bcrypt before storage
+- Old password no longer works after token consumed and password set
 - Password policy enforced server-side (not just UI)
 - Rate limiting on password-setup endpoint (30 validate/15min, 10 submit/15min)
+- Rate limiting on reset-password endpoint (5 resets per 15min per admin)
 
 **Failure Modes**:
-- Temp password not invalidated after use → permanent backdoor
+- Email delivery failure leaves old credentials intact (desired) but admin sees no feedback
+- Token reuse: second click on reset link returns "already used" error
 - Password policy only enforced client-side → weak passwords accepted via API
 - Old sessions not revoked → parallel access with old and new credentials
-- Rate limit not enforced → brute force temp password
+- Rate limit not enforced → admin can flood user with reset emails
 
-**Current E2E Coverage**: ✅ `temp-password-lifecycle.spec.ts`
-**Gaps**: No test for old-session invalidation after reset. No server-side policy enforcement test. No rate limit test.
+**Current E2E Coverage**: ✅ `temp-password-lifecycle.spec.ts` (mustChangePassword gating), `admin-user-management.spec.ts` (reset flow UI)
+**Gaps**: No test for old-session invalidation after reset. No server-side policy enforcement test. No rate limit E2E test.
 **Mapped Beads**: hr-kfwh.9, hr-kfwh.10
 
 ---
@@ -257,7 +259,7 @@
 
 **Steps & Invariants**:
 1. User invite → `sendInviteEmail()` with set-password link
-2. Password reset → email with temp password
+2. Password reset → `buildResetEmail()` with set-password link (not a temp password)
 3. Template includes correct recipient, subject, body
 4. HTML + plain text versions generated
 5. Set-password link contains valid token
@@ -271,8 +273,7 @@
 
 **Failure Modes**:
 - Wrong token in email → user can't set password
-- Email contains PII in plain text (temp password in email body is intentional but logged)
-- SMTP failure throws unhandled exception → 500 on user creation
+- SMTP failure throws unhandled exception → 500 on user creation (should be 502 with graceful fallback)
 - Template injection via user name field
 
 **Current Coverage**: ✅ Unit tests (46), integration (12), E2E (12 via invite flow)
@@ -307,8 +308,8 @@
 - Authorization checked after DB query → information leak via timing
 - Role change in database not reflected until session refresh
 
-**Current Coverage**: ⚠️ Unit tests mock auth. E2E tests check UI-level access but not direct API calls.
-**Gaps**: No direct API authorization E2E test. No test for role change propagation.
+**Current Coverage**: ✅ `failure-path-journey.spec.ts` covers direct API authorization (VIEWER POST /api/jobs → 403, VIEWER POST /api/candidates → 403, unauthenticated GET → 401)
+**Gaps**: No test for role change propagation timing. No test for RECRUITER calling user-management endpoints.
 **Mapped Beads**: hr-kfwh.9, hr-kfwh.20.3
 
 ---
@@ -418,14 +419,14 @@
 
 | Journey | Unit Tests | Integration Tests | E2E Tests | Bead |
 |---------|-----------|-------------------|-----------|------|
-| P0-1: Admin User Lifecycle | auth-config | users-admin-api, password-setup-api | invite-onboarding-flow, admin-delete-user, temp-password | hr-kfwh.23.1 |
-| P0-2: Auth & Sessions | auth-config, auth-enforcement-api | — | auth | hr-kfwh.9 |
+| P0-1: Admin User Lifecycle | auth-config | users-admin-api, password-setup-api | invite-onboarding-flow, admin-delete-user, temp-password-lifecycle, admin-user-management, failure-path-journey | hr-kfwh.23.1 |
+| P0-2: Auth & Sessions | auth-config, auth-enforcement-api | — | auth, failure-path-journey | hr-kfwh.9 |
 | P0-3: WFP Import | wfp-sanitize, wfp-import-parsers, wfp-ids | — | — | hr-197h.36 |
 | P0-4: Resume Pipeline | storage-list-objects | resume-upload, storage-config | resume-upload | hr-kfwh.14 |
 | P1-1: Recruiting Pipeline | jobs-route, candidates-*, applications-* | all CRUD integration | jobs, candidates, applications | hr-kfwh.23.2 |
-| P1-2: Password Security | password-policy | users-self-service, password-setup-api | temp-password-lifecycle | hr-kfwh.9 |
+| P1-2: Password Security | password-policy | users-self-service, password-setup-api | temp-password-lifecycle, admin-user-management | hr-kfwh.9 |
 | P1-3: Email Delivery | email-service, email-templates | password-setup-api | invite-onboarding-flow | hr-kfwh.11 |
-| P1-4: API Authorization | auth-enforcement-api | — | auth (partial) | hr-kfwh.20.3 |
+| P1-4: API Authorization | auth-enforcement-api | — | auth, failure-path-journey | hr-kfwh.20.3 |
 | P2-1: Dashboard Metrics | — | dashboard-stats | dashboard | hr-kfwh.23.2 |
 | P2-2: Headcount/Tradeoffs | — | — | — | hr-kfwh.28 |
 | P2-3: Rate Limiting | rate-limit | — | — | hr-kfwh.10 |
