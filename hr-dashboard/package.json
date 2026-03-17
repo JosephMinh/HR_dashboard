@@ -10,6 +10,7 @@
     "test": "bunx vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "coverage:merge": "node ./scripts/merge-coverage.mjs",
     "test:integration": "vitest run --config vitest.config.integration.ts",
     "test:integration:watch": "vitest --config vitest.config.integration.ts",
     "test:integration:coverage": "vitest run --config vitest.config.integration.ts --coverage",
@@ -26,6 +27,10 @@
     "db:studio": "prisma studio",
     "test:all": "bash ./scripts/test-all.sh",
     "test:preflight": "bash ./scripts/test-preflight.sh",
+    "coverage:guard": "bash ./scripts/coverage-guard.sh",
+    "coverage:guard:ci": "bash ./scripts/coverage-guard.sh --no-run --base origin/main",
+    "coverage:diff": "bun run scripts/coverage-diff.ts",
+    "coverage:diff:ci": "bun run scripts/coverage-diff.ts --base origin/main",
     "import:wfp": "bun run prisma/import-wfp.ts"
   },
   "dependencies": {
@@ -70,6 +75,7 @@
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-istanbul": "4.0.18",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
