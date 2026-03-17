@@ -328,9 +328,10 @@ When not set, rate limiting falls back to an in-memory store (not suitable for m
 
 | Variable | Description |
 | --- | --- |
-| `ADMIN_NAME` | Initial admin display name |
-| `ADMIN_EMAIL` | Initial admin email |
-| `ADMIN_PASSWORD` | Initial admin password (must meet password policy) |
+| `HR_DASHBOARD_SEED_MODE` | Seed mode for `prisma db seed` (`demo` or `wfp`, default: `demo`) |
+| `ADMIN_NAME` | Admin display name for first bootstrap or explicit admin refresh |
+| `ADMIN_EMAIL` | Admin email for first bootstrap or explicit admin refresh |
+| `ADMIN_PASSWORD` | Admin password for first bootstrap or explicit admin refresh |
 
 ## Getting Started
 
@@ -346,8 +347,11 @@ cp .env.example .env
 bun run db:generate
 bun run db:push
 
-# Seed initial admin user (set ADMIN_* env vars first)
+# Seed demo recruiting data and bootstrap an admin
 bun run db:seed
+
+# Or import the approved WFP workbook instead of demo data
+bun run db:seed:wfp
 
 # Start development server
 bun run dev
@@ -401,7 +405,7 @@ bun run test:preflight
 | Script | Description |
 | --- | --- |
 | `dev` | Start Next.js dev server |
-| `build` | Generate Prisma client, push schema, seed, build Next.js |
+| `build` | Generate Prisma client, run migrations, import WFP data, build Next.js |
 | `start` | Start production server |
 | `lint` | Run ESLint |
 | `test` | Run unit tests |
@@ -426,9 +430,10 @@ bun run test:preflight
 | `db:generate` | Generate Prisma client |
 | `db:push` | Push schema to database |
 | `db:migrate` | Run Prisma migrations |
-| `db:seed` | Seed database |
+| `db:seed` | Seed demo recruiting data and bootstrap an admin |
+| `db:seed:wfp` | Bootstrap an admin if needed, then import the approved WFP workbook |
 | `db:studio` | Open Prisma Studio |
-| `import:wfp` | Import WFP workforce planning data from Excel workbook |
+| `import:wfp` | Alias for `db:seed:wfp` |
 
 ## Testing Strategy
 

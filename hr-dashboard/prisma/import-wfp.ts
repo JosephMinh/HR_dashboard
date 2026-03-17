@@ -14,6 +14,7 @@
 
 import "dotenv/config";
 
+import * as fs from "fs";
 import * as path from "path";
 import * as XLSX from "xlsx";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -36,7 +37,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 // prisma/ is one level below hr-dashboard/, where the workbook lives
-const WORKBOOK_PATH = path.resolve(
+export const DEFAULT_WORKBOOK_PATH = path.resolve(
   __dirname,
   "..",
   "2026 WFP - Approved (1).xlsx",
@@ -83,11 +84,22 @@ function resolveMatchedJobId(
 // Database helpers
 // ---------------------------------------------------------------------------
 
-function createPrismaClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL environment variable is not set");
+export function resolveDatabaseUrl(): string {
+  const directUrl = process.env.DIRECT_URL?.trim();
+  if (directUrl) {
+    return directUrl;
   }
+
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (databaseUrl) {
+    return databaseUrl;
+  }
+
+  throw new Error("DATABASE_URL environment variable is not set");
+}
+
+export function createPrismaClient(): PrismaClient {
+  const connectionString = resolveDatabaseUrl();
   const adapter = new PrismaPg({ connectionString });
   return new PrismaClient({ adapter });
 }
@@ -96,13 +108,40 @@ function createPrismaClient(): PrismaClient {
 // Import orchestration
 // ---------------------------------------------------------------------------
 
-async function main() {
+export interface WfpImportOptions {
+  prisma?: PrismaClient;
+  workbookPath?: string;
+}
+
+export interface WfpImportSummary {
+  jobs: number;
+  candidates: number;
+  applications: number;
+  headcountProjections: number;
+  tradeoffs: number;
+  warnings: number;
+}
+
+function loadWorkbook(workbookPath: string): XLSX.WorkBook {
+  if (!fs.existsSync(workbookPath)) {
+    throw new Error(
+      `WFP workbook not found at ${workbookPath}. ` +
+        "Place '2026 WFP - Approved (1).xlsx' in the hr-dashboard root before running WFP seed mode.",
+    );
+  }
+
+  return XLSX.readFile(workbookPath);
+}
+
+export async function runWfpImport({
+  prisma,
+  workbookPath = DEFAULT_WORKBOOK_PATH,
+}: WfpImportOptions = {}): Promise<WfpImportSummary> {
   console.log("=== WFP Data Import ===\n");
 
   // 1. Read workbook
-  const wbPath = WORKBOOK_PATH;
-  console.log(`Reading workbook: ${wbPath}`);
-  const workbook = XLSX.readFile(wbPath);
+  console.log(`Reading workbook: ${workbookPath}`);
+  const workbook = loadWorkbook(workbookPath);
   console.log(`Sheets: ${workbook.SheetNames.join(", ")}\n`);
 
   // 2. Parse all sheets
@@ -207,10 +246,11 @@ async function main() {
 
   // 5. Write to database
   console.log("\n--- Writing to database ---");
-  const prisma = createPrismaClient();
+  const db = prisma ?? createPrismaClient();
+  const shouldDisconnect = prisma == null;
 
   try {
-    await prisma.$transaction(
+    await db.$transaction(
       async (tx) => {
         // Clear existing recruiting data in FK-safe order
         console.log("Clearing existing recruiting data...");
@@ -440,17 +480,17 @@ async function main() {
 
     // 6. Print verification counts from database
     console.log("\n--- Verification ---");
-    const jobCount = await prisma.job.count();
-    const candidateCount = await prisma.candidate.count();
-    const applicationCount = await prisma.application.count();
-    const projectionCount = await prisma.headcountProjection.count();
-    const tradeoffCount = await prisma.tradeoff.count();
+    const jobCount = await db.job.count();
+    const candidateCount = await db.candidate.count();
+    const applicationCount = await db.application.count();
+    const projectionCount = await db.headcountProjection.count();
+    const tradeoffCount = await db.tradeoff.count();
 
-    const jobsByStatus = await prisma.job.groupBy({
+    const jobsByStatus = await db.job.groupBy({
       by: ["status"],
       _count: true,
     });
-    const jobsByHorizon = await prisma.job.groupBy({
+    const jobsByHorizon = await db.job.groupBy({
       by: ["horizon"],
       _count: true,
     });
@@ -477,13 +517,30 @@ async function main() {
         console.log(`  ... and ${allWarnings.length - 50} more`);
       }
     }
+
+    return {
+      jobs: jobCount,
+      candidates: candidateCount,
+      applications: applicationCount,
+      headcountProjections: projectionCount,
+      tradeoffs: tradeoffCount,
+      warnings: allWarnings.length,
+    };
   } finally {
-    await prisma.$disconnect();
+    if (shouldDisconnect) {
+      await db.$disconnect();
+    }
   }
 }
 
-main().catch((error) => {
-  console.error("WFP import failed:");
-  console.error(error);
-  process.exit(1);
-});
+async function main() {
+  await runWfpImport();
+}
+
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("WFP import failed:");
+    console.error(error);
+    process.exit(1);
+  });
+}

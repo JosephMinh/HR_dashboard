@@ -1,6 +1,5 @@
 import "dotenv/config";
 
-import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "bcryptjs";
 
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -13,6 +12,7 @@ import {
   UserRole,
 } from "../src/generated/prisma/enums";
 import { PasswordSchema } from "../src/lib/validations/password";
+import { createPrismaClient, runWfpImport } from "./import-wfp";
 
 type SeedJob = {
   id: string;
@@ -57,13 +57,41 @@ type SeedApplication = {
 };
 
 // ---------------------------------------------------------------------------
-// Admin account from environment
+// Seed mode + admin bootstrap configuration
 // ---------------------------------------------------------------------------
 
-function resolveAdminEnv(): { name: string; email: string; password: string } {
+type SeedMode = "demo" | "wfp";
+
+type AdminSeedConfig = {
+  name: string;
+  email: string;
+  password: string;
+};
+
+function resolveSeedMode(): SeedMode {
+  const rawMode = process.env.HR_DASHBOARD_SEED_MODE?.trim().toLowerCase();
+  if (!rawMode || rawMode === "demo") {
+    return "demo";
+  }
+
+  if (rawMode === "wfp") {
+    return "wfp";
+  }
+
+  throw new Error(
+    `Unsupported HR_DASHBOARD_SEED_MODE "${rawMode}". ` +
+      'Expected "demo" or "wfp".',
+  );
+}
+
+function resolveAdminEnv(): AdminSeedConfig | null {
   const name = process.env.ADMIN_NAME?.trim();
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD;
+
+  if (!name && !email && !password) {
+    return null;
+  }
 
   const missing: string[] = [];
   if (!name) missing.push("ADMIN_NAME");
@@ -73,7 +101,7 @@ function resolveAdminEnv(): { name: string; email: string; password: string } {
   if (missing.length > 0) {
     throw new Error(
       `Missing required env vars for seeding: ${missing.join(", ")}. ` +
-        "Set ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD before running prisma db seed.",
+        "Set ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD before running prisma db seed, or unset all three to keep the existing admin account.",
     );
   }
 
@@ -95,8 +123,6 @@ function resolveAdminEnv(): { name: string; email: string; password: string } {
 
   return { name: name!, email: email!, password: password! };
 }
-
-const adminEnv = resolveAdminEnv();
 
 const jobs: SeedJob[] = [
   {
@@ -630,19 +656,33 @@ const applications: SeedApplication[] = [
   },
 ];
 
-function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
+async function seedAdmin(prisma: PrismaClient): Promise<string> {
+  const adminEnv = resolveAdminEnv();
+  if (!adminEnv) {
+    const existingAdmin = await prisma.user.findFirst({
+      where: {
+        role: UserRole.ADMIN,
+        active: true,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      select: {
+        email: true,
+      },
+    });
 
-  if (!connectionString) {
-    throw new Error("DATABASE_URL environment variable is not set");
+    if (existingAdmin) {
+      console.log(`Admin bootstrap skipped; using existing admin ${existingAdmin.email}`);
+      return existingAdmin.email;
+    }
+
+    throw new Error(
+      "No active admin exists and ADMIN_* env vars are not set. " +
+        "Set ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD before the first prisma db seed run.",
+    );
   }
 
-  const adapter = new PrismaPg({ connectionString });
-
-  return new PrismaClient({ adapter });
-}
-
-async function seedAdmin(prisma: PrismaClient) {
   const passwordHash = await hash(adminEnv.password, 10);
 
   await prisma.user.upsert({
@@ -663,6 +703,8 @@ async function seedAdmin(prisma: PrismaClient) {
       passwordHash,
     },
   });
+
+  return adminEnv.email;
 }
 
 async function seedJobs(prisma: PrismaClient) {
@@ -695,17 +737,43 @@ async function seedApplications(prisma: PrismaClient) {
   }
 }
 
+async function clearRecruitingData(prisma: PrismaClient) {
+  await prisma.tradeoff.deleteMany();
+  await prisma.headcountProjection.deleteMany();
+  await prisma.application.deleteMany();
+  await prisma.candidate.deleteMany();
+  await prisma.job.deleteMany();
+}
+
+async function seedDemoData(prisma: PrismaClient) {
+  await clearRecruitingData(prisma);
+  await seedJobs(prisma);
+  await seedCandidates(prisma);
+  await seedApplications(prisma);
+}
+
 async function main() {
+  const seedMode = resolveSeedMode();
   const prisma = createPrismaClient();
 
   try {
-    await seedAdmin(prisma);
-    await seedJobs(prisma);
-    await seedCandidates(prisma);
-    await seedApplications(prisma);
+    console.log(`Seed mode: ${seedMode}`);
+    const adminEmail = await seedAdmin(prisma);
+
+    if (seedMode === "wfp") {
+      await runWfpImport({ prisma });
+
+      console.log("Seed complete");
+      console.log(`Mode: ${seedMode}`);
+      console.log(`Admin: ${adminEmail}`);
+      return;
+    }
+
+    await seedDemoData(prisma);
 
     console.log("Seed complete");
-    console.log(`Admin: ${adminEnv.email}`);
+    console.log(`Mode: ${seedMode}`);
+    console.log(`Admin: ${adminEmail}`);
     console.log(`Jobs: ${jobs.length}`);
     console.log(`Candidates: ${candidates.length}`);
     console.log(`Applications: ${applications.length}`);

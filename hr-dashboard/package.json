@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && (DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate resolve --applied 20260316000000_init || true) && DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate deploy && prisma db seed && next build",
+    "build": "prisma generate && (DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate resolve --applied 20260316000000_init || true) && DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate deploy && HR_DASHBOARD_SEED_MODE=wfp DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma db seed && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "bunx vitest run",
@@ -23,7 +23,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed",
+    "db:seed": "HR_DASHBOARD_SEED_MODE=demo prisma db seed",
+    "db:seed:wfp": "HR_DASHBOARD_SEED_MODE=wfp DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma db seed",
     "db:studio": "prisma studio",
     "test:all": "bash ./scripts/test-all.sh",
     "test:preflight": "bash ./scripts/test-preflight.sh",
@@ -31,7 +32,7 @@
     "coverage:guard:ci": "bash ./scripts/coverage-guard.sh --no-run --base origin/main",
     "coverage:diff": "bun run scripts/coverage-diff.ts",
     "coverage:diff:ci": "bun run scripts/coverage-diff.ts --base origin/main",
-    "import:wfp": "bun run prisma/import-wfp.ts"
+    "import:wfp": "bun run db:seed:wfp"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1004.0",
