@@ -16,7 +16,7 @@ interface PlaywrightTestSummary {
   status: string
   durationMs: number
   steps: PlaywrightStepSummary[]
-  attachments: Array<{ name: string; contentType: string; path?: string }>
+  attachments: Array<{ name: string; contentType: string; path?: string; body?: string }>
   errors?: Array<{ message: string; stack?: string }>
   stderr?: string[]
   stdout?: string[]
@@ -100,11 +100,20 @@ export default class PlaywrightDetailedReporter implements Reporter {
   }
 
   onTestEnd(test: TestCase, result: TestResult) {
-    const attachments = result.attachments.map((attachment) => ({
-      name: attachment.name,
-      contentType: attachment.contentType,
-      path: attachment.path,
-    }))
+    const attachments = result.attachments.map((attachment) => {
+      const isText =
+        attachment.contentType.startsWith("text/") ||
+        attachment.contentType === "application/json"
+      return {
+        name: attachment.name,
+        contentType: attachment.contentType,
+        path: attachment.path,
+        body:
+          !attachment.path && attachment.body && isText
+            ? (attachment.body as Buffer).toString("utf8")
+            : undefined,
+      }
+    })
 
     const summary: PlaywrightTestSummary = {
       title: test.titlePath().join(" "),
@@ -136,10 +145,14 @@ export default class PlaywrightDetailedReporter implements Reporter {
       )
     })
 
-    if (summary.stderr && summary.stderr.length > 0) {
-      summary.stderr.forEach((line) => {
-        if (line.toLowerCase().includes("error")) {
-          console.log(`[${new Date().toISOString()}] [PLAYWRIGHT] stderr: ${line.trim()}`)
+    const isFailed = result.status === "failed" || result.status === "timedOut"
+    if (isFailed) {
+      const stderrLines = serializeOutput(result.stderr).flatMap((c) => c.split("\n")).filter(Boolean)
+      const stdoutLines = serializeOutput(result.stdout).flatMap((c) => c.split("\n")).filter(Boolean)
+      const serverLines = [...stderrLines, ...stdoutLines]
+      serverLines.forEach((line) => {
+        if (line.toLowerCase().includes("error") || line.toLowerCase().includes("warn")) {
+          console.log(`[${new Date().toISOString()}] [PLAYWRIGHT] server: ${line.trim()}`)
         }
       })
     }
@@ -182,26 +195,95 @@ export default class PlaywrightDetailedReporter implements Reporter {
     lines.push(`Totals: passed=${summary.passed} failed=${summary.failed} skipped=${summary.skipped}`)
     lines.push("")
 
+    const failedTests = summary.tests.filter(
+      (t) => t.status === "failed" || t.status === "timedOut",
+    )
+    if (failedTests.length > 0) {
+      lines.push("=== FAILURES ===")
+      failedTests.forEach((test) => {
+        this.appendTestDetail(lines, test, /* failuresSection */ true)
+      })
+      lines.push("")
+    }
+
+    lines.push("=== ALL TESTS ===")
     summary.tests.forEach((test) => {
-      lines.push(`[${test.status}] ${test.title} (${test.durationMs}ms)`)
-      if (test.steps.length > 0) {
-        this.appendStepLines(lines, test.steps, 1)
-      }
-      if (test.attachments.length > 0) {
-        test.attachments.forEach((attachment) => {
-          if (attachment.path) {
-            lines.push(`  attachment: ${attachment.name} -> ${attachment.path}`)
-          }
-        })
-      }
-      if (test.errors && test.errors.length > 0) {
-        test.errors.forEach((error) => {
-          lines.push(`  error: ${error.message}`)
-        })
-      }
+      this.appendTestDetail(lines, test, /* failuresSection */ false)
     })
 
     return `${lines.join("\n")}\n`
+  }
+
+  private appendTestDetail(
+    lines: string[],
+    test: PlaywrightTestSummary,
+    failuresSection: boolean,
+  ): void {
+    const isFailed = test.status === "failed" || test.status === "timedOut"
+    lines.push(`[${test.status}] ${test.title} (${test.durationMs}ms)`)
+
+    if (test.steps.length > 0) {
+      this.appendStepLines(lines, test.steps, 1)
+    }
+
+    // Errors
+    if (test.errors && test.errors.length > 0) {
+      test.errors.forEach((error) => {
+        lines.push(`  error: ${error.message}`)
+        if (error.stack) {
+          // First stack line only to keep output compact
+          const firstStackLine = error.stack.split("\n").find((l) => l.trim().startsWith("at "))
+          if (firstStackLine) {
+            lines.push(`    ${firstStackLine.trim()}`)
+          }
+        }
+      })
+    }
+
+    // Artifacts — always show for failures, collapse for passes
+    const mediaAttachments = test.attachments.filter((a) => a.path)
+    const bodyAttachments = test.attachments.filter((a) => !a.path)
+    if (mediaAttachments.length > 0) {
+      lines.push("  artifacts:")
+      mediaAttachments.forEach((attachment) => {
+        lines.push(`    [${attachment.name}] (${attachment.contentType}) -> ${attachment.path}`)
+      })
+    }
+    if (bodyAttachments.length > 0 && (isFailed || failuresSection)) {
+      bodyAttachments.forEach((attachment) => {
+        if (attachment.body) {
+          const bodyLines = attachment.body.split("\n").filter(Boolean)
+          lines.push(`  [${attachment.name}] (${bodyLines.length} lines):`)
+          const limit = 100
+          bodyLines.slice(0, limit).forEach((l) => lines.push(`    ${l}`))
+          if (bodyLines.length > limit) {
+            lines.push(`    ... (${bodyLines.length - limit} more lines)`)
+          }
+        } else {
+          lines.push(`  [${attachment.name}] (${attachment.contentType}) <inline binary body>`)
+        }
+      })
+    }
+
+    // App-server stderr + stdout for failing tests (first 30 lines combined)
+    if (isFailed) {
+      const stderrLines = (test.stderr ?? []).flatMap((chunk) => chunk.split("\n")).filter(Boolean)
+      const stdoutLines = (test.stdout ?? []).flatMap((chunk) => chunk.split("\n")).filter(Boolean)
+      if (stderrLines.length > 0) {
+        lines.push("  server-stderr:")
+        stderrLines.slice(0, 30).forEach((l) => lines.push(`    ${l}`))
+        if (stderrLines.length > 30) {
+          lines.push(`    ... (${stderrLines.length - 30} more lines)`)
+        }
+      }
+      if (stdoutLines.length > 0) {
+        lines.push("  server-stdout:")
+        stdoutLines.slice(0, 30).forEach((l) => lines.push(`    ${l}`))
+        if (stdoutLines.length > 30) {
+          lines.push(`    ... (${stdoutLines.length - 30} more lines)`)
+        }
+      }
+    }
   }
 
   private appendStepLines(lines: string[], steps: PlaywrightStepSummary[], depth: number) {
