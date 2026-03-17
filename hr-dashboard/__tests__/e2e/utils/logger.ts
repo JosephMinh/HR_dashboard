@@ -9,9 +9,16 @@ import { test as playwright, type Locator, type Page, type TestInfo } from "@pla
 
 export interface E2ELogEntry {
   timestamp: string
-  level: "INFO" | "STEP" | "ASSERT" | "ERROR" | "SCREENSHOT" | "NETWORK"
+  level: "INFO" | "STEP" | "ASSERT" | "ERROR" | "SCREENSHOT" | "NETWORK" | "CONSOLE"
   message: string
   data?: Record<string, unknown>
+}
+
+export interface ConsoleLogEntry {
+  ts: string
+  type: string
+  text: string
+  location?: string
 }
 
 export interface E2EStepResult {
@@ -28,6 +35,7 @@ export class E2ETestLogger {
   private readonly startTime: number
   private readonly entries: E2ELogEntry[] = []
   private readonly steps: E2EStepResult[] = []
+  private readonly consoleLogs: ConsoleLogEntry[] = []
 
   constructor(testName: string, testInfo?: TestInfo) {
     this.testName = testName
@@ -150,6 +158,18 @@ export class E2ETestLogger {
   }
 
   /**
+   * Record a browser console message. Called by setupConsoleCapture.
+   * Error/warning/pageerror entries are also emitted to the structured log;
+   * info/log/debug entries are collected silently to avoid noise.
+   */
+  addConsoleEntry(type: string, text: string, location?: string): void {
+    this.consoleLogs.push({ ts: new Date().toISOString(), type, text, ...(location ? { location } : {}) })
+    if (type === "error" || type === "warning" || type === "warn" || type === "pageerror") {
+      this.log("CONSOLE", `[console:${type}] ${text}`)
+    }
+  }
+
+  /**
    * Get test summary
    */
   getSummary(): {
@@ -180,6 +200,68 @@ export class E2ETestLogger {
       stepsPassed: this.steps.filter((s) => s.status === "pass").length,
       stepsFailed: this.steps.filter((s) => s.status === "fail").length,
     })
+  }
+
+  /**
+   * Get all browser console entries (for artifact attachment).
+   */
+  getConsoleEntries(): readonly ConsoleLogEntry[] {
+    return this.consoleLogs
+  }
+
+  /**
+   * Format browser console entries as a plain-text artifact.
+   */
+  getConsoleText(): string {
+    if (this.consoleLogs.length === 0) {
+      return "(no browser console messages captured)\n"
+    }
+    return (
+      this.consoleLogs
+        .map((e) => {
+          const loc = e.location ? ` @ ${e.location}` : ""
+          return `[${e.ts}] [${e.type.toUpperCase()}]${loc} ${e.text}`
+        })
+        .join("\n") + "\n"
+    )
+  }
+
+  /**
+   * Format all log entries as a plain-text artifact suitable for attachment.
+   * Includes structured log, steps, and console captures.
+   */
+  getFullLogText(): string {
+    const lines: string[] = []
+    lines.push(`=== Execution Log: ${this.testName} ===`)
+    lines.push(`Started: ${new Date(this.startTime).toISOString()}`)
+    lines.push("")
+
+    // Structured log entries
+    lines.push("--- Event Log ---")
+    for (const entry of this.entries) {
+      const dataStr = entry.data ? ` ${JSON.stringify(entry.data)}` : ""
+      lines.push(`[${entry.timestamp}] [${entry.level}] ${entry.message}${dataStr}`)
+    }
+    lines.push("")
+
+    // Step summary
+    if (this.steps.length > 0) {
+      lines.push("--- Steps ---")
+      for (const step of this.steps) {
+        const errStr = step.error ? ` ERROR: ${step.error}` : ""
+        const ssStr = step.screenshotPath ? ` screenshot: ${step.screenshotPath}` : ""
+        lines.push(`  [${step.status.toUpperCase()}] ${step.name} (${step.durationMs}ms)${errStr}${ssStr}`)
+      }
+      lines.push("")
+    }
+
+    // Browser console
+    if (this.consoleLogs.length > 0) {
+      lines.push("--- Browser Console ---")
+      lines.push(this.getConsoleText())
+    }
+
+    return lines.join("\n") + "\n"
   }
 }
 
@@ -557,6 +639,24 @@ export function createLoggedPage(page: Page, logger: E2ETestLogger): Page {
  */
 export function createE2ELogger(testName: string, testInfo?: TestInfo): E2ETestLogger {
   return new E2ETestLogger(testName, testInfo)
+}
+
+/**
+ * Capture browser console messages and uncaught page errors for a page.
+ * Errors and warnings are emitted to the logger immediately; all messages
+ * are stored and exposed via logger.getConsoleEntries() / getConsoleText()
+ * for artifact attachment at test teardown.
+ */
+export function setupConsoleCapture(page: Page, logger: E2ETestLogger): void {
+  page.on("console", (msg) => {
+    const location = msg.location()
+    const locationStr =
+      location.url ? `${location.url}:${location.lineNumber}:${location.columnNumber}` : undefined
+    logger.addConsoleEntry(msg.type(), msg.text(), locationStr)
+  })
+  page.on("pageerror", (error) => {
+    logger.addConsoleEntry("pageerror", error.message)
+  })
 }
 
 /**

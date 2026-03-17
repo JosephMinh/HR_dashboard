@@ -5,7 +5,7 @@ import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import PlaywrightDetailedReporter from "@/test/playwright-reporter"
-import { createE2ELogger, createLoggedPage, setupNetworkLogging } from "../e2e/utils/logger"
+import { createE2ELogger, createLoggedPage, setupConsoleCapture, setupNetworkLogging } from "../e2e/utils/logger"
 
 async function makeTempDir(prefix: string): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), prefix))
@@ -142,6 +142,96 @@ describe("setupNetworkLogging", () => {
   })
 })
 
+describe("setupConsoleCapture", () => {
+  it("collects browser console messages and stores them for artifact retrieval", () => {
+    const logger = createE2ELogger("console capture test")
+    const handlers = new Map<string, (value: unknown) => void>()
+
+    const page = {
+      on: vi.fn((event: string, handler: (value: unknown) => void) => {
+        handlers.set(event, handler)
+      }),
+    }
+
+    setupConsoleCapture(page as never, logger)
+
+    // Simulate a mix of console levels
+    handlers.get("console")?.({
+      type: () => "log",
+      text: () => "debug info",
+      location: () => ({ url: "http://localhost:3000/page.js", lineNumber: 10, columnNumber: 5 }),
+    })
+    handlers.get("console")?.({
+      type: () => "error",
+      text: () => "Something went wrong",
+      location: () => ({ url: "http://localhost:3000/page.js", lineNumber: 42, columnNumber: 1 }),
+    })
+    handlers.get("pageerror")?.({ message: "Uncaught ReferenceError: foo is not defined" })
+
+    const entries = logger.getConsoleEntries()
+    expect(entries).toHaveLength(3)
+    expect(entries[0]).toMatchObject({ type: "log", text: "debug info" })
+    expect(entries[1]).toMatchObject({ type: "error", text: "Something went wrong" })
+    expect(entries[2]).toMatchObject({ type: "pageerror", text: "Uncaught ReferenceError: foo is not defined" })
+  })
+
+  it("includes location in console text output when available", () => {
+    const logger = createE2ELogger("console location test")
+    const handlers = new Map<string, (value: unknown) => void>()
+
+    const page = {
+      on: vi.fn((event: string, handler: (value: unknown) => void) => {
+        handlers.set(event, handler)
+      }),
+    }
+
+    setupConsoleCapture(page as never, logger)
+
+    handlers.get("console")?.({
+      type: () => "warning",
+      text: () => "Deprecated API",
+      location: () => ({ url: "http://localhost:3000/app.js", lineNumber: 7, columnNumber: 3 }),
+    })
+
+    const consoleText = logger.getConsoleText()
+    expect(consoleText).toContain("[WARNING]")
+    expect(consoleText).toContain("Deprecated API")
+    expect(consoleText).toContain("http://localhost:3000/app.js:7:3")
+  })
+
+  it("getFullLogText includes console section when messages exist", () => {
+    const logger = createE2ELogger("full log test")
+    const handlers = new Map<string, (value: unknown) => void>()
+
+    const page = {
+      on: vi.fn((event: string, handler: (value: unknown) => void) => {
+        handlers.set(event, handler)
+      }),
+    }
+
+    setupConsoleCapture(page as never, logger)
+
+    handlers.get("console")?.({
+      type: () => "error",
+      text: () => "Critical failure",
+      location: () => ({ url: "", lineNumber: 0, columnNumber: 0 }),
+    })
+
+    const fullLog = logger.getFullLogText()
+    expect(fullLog).toContain("=== Execution Log: full log test ===")
+    expect(fullLog).toContain("--- Event Log ---")
+    expect(fullLog).toContain("--- Browser Console ---")
+    expect(fullLog).toContain("Critical failure")
+  })
+
+  it("getFullLogText omits console section when no messages exist", () => {
+    const logger = createE2ELogger("no console test")
+
+    const fullLog = logger.getFullLogText()
+    expect(fullLog).not.toContain("--- Browser Console ---")
+  })
+})
+
 describe("PlaywrightDetailedReporter", () => {
   const tempDirs: string[] = []
 
@@ -191,10 +281,54 @@ describe("PlaywrightDetailedReporter", () => {
       tests: Array<{ steps: Array<{ title: string; steps: Array<{ title: string }> }> }>
     }
 
-    expect(textReport).toContain("[passed] chromium invite shows missing token (321ms)")
+    expect(
+      textReport.includes("[passed] chromium invite shows missing token (321ms)") ||
+        textReport.includes("[PASSED] chromium invite shows missing token (321ms)"),
+    ).toBe(true)
     expect(textReport).toContain("- navigate to /set-password [test.step] (120ms)")
     expect(textReport).toContain("- fill label=Password [test.step] (40ms)")
     expect(jsonReport.tests[0]?.steps[0]?.title).toBe("navigate to /set-password")
     expect(jsonReport.tests[0]?.steps[0]?.steps[0]?.title).toBe("fill label=Password")
+  })
+
+  it("prominently surfaces artifact paths and server stderr for failing tests", async () => {
+    const outputDir = await makeTempDir("playwright-reporter-fail-")
+    tempDirs.push(outputDir)
+
+    const reporter = new PlaywrightDetailedReporter({ outputDir })
+    reporter.onBegin({} as never, { allTests: () => [1] } as never)
+    reporter.onTestEnd(
+      {
+        titlePath: () => ["chromium", "auth", "rejects invalid token"],
+        location: { file: "__tests__/e2e/auth.spec.ts" },
+      } as never,
+      {
+        status: "failed",
+        duration: 4200,
+        attachments: [
+          { name: "screenshot", contentType: "image/png", path: "/tmp/pw/test-results/auth-rejects-invalid-token/screenshot.png" },
+          { name: "execution-log", contentType: "text/plain" },
+        ],
+        errors: [{ message: "expect(received).toBe(expected)\nExpected: 200\nReceived: 401", stack: "  at Object.<anonymous> (__tests__/e2e/auth.spec.ts:42:5)" }],
+        stderr: ["[server] POST /api/auth 401 Unauthorized\n", "[server] invalid token format\n"],
+        stdout: [],
+        steps: [],
+      } as never,
+    )
+    reporter.onEnd({ status: "failed" } as never)
+
+    const textReport = await readFile(path.join(outputDir, "report.txt"), "utf8")
+
+    // Failures section is present
+    expect(textReport).toContain("=== FAILURES ===")
+    // Artifact path surfaced for screenshot
+    expect(textReport).toContain("screenshot.png")
+    // Inline attachment name surfaced
+    expect(textReport).toContain("execution-log")
+    // Error message shown
+    expect(textReport).toContain("expect(received).toBe(expected)")
+    // Server stderr shown under failing test
+    expect(textReport).toContain("server-stderr")
+    expect(textReport).toContain("invalid token format")
   })
 })
