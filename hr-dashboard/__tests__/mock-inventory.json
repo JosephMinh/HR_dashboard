@@ -224,7 +224,8 @@
       "file": "__tests__/integration/resume-upload.test.ts",
       "suite": "integration",
       "mocks": [
-        {"type": "vi.mock", "target": "@/lib/storage", "layer": "storage", "risk": "high", "disposition": "replaceable-later", "reason": "Mocks presigned URL generation; hides S3 key format, signature, expiry issues"}
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
       ],
       "vi_fn_count": 2
     },
@@ -277,6 +278,127 @@
       "mocks": [
         {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects to test DB pool"},
         {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I08",
+      "file": "__tests__/integration/jobs-post.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I09",
+      "file": "__tests__/integration/jobs-get.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I10",
+      "file": "__tests__/integration/jobs-detail.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I11",
+      "file": "__tests__/integration/dashboard-stats.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I12",
+      "file": "__tests__/integration/applications.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I13",
+      "file": "__tests__/integration/candidates-get.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I14",
+      "file": "__tests__/integration/candidates-post.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I15",
+      "file": "__tests__/integration/candidates-detail.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I16",
+      "file": "__tests__/integration/candidates-validation.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I17",
+      "file": "__tests__/integration/jobs-validation.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I18",
+      "file": "__tests__/integration/validation-edge-cases.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
+      ],
+      "vi_fn_count": 0
+    },
+    {
+      "id": "I19",
+      "file": "__tests__/integration/system-test-lane.test.ts",
+      "suite": "integration",
+      "mocks": [
+        {"type": "vi.mock", "target": "@/lib/prisma", "layer": "db", "risk": "low", "disposition": "necessary", "reason": "Redirects route handler Prisma to the shared test DB pool; real queries execute against the real schema"},
+        {"type": "vi.mock", "target": "@/lib/email", "layer": "email", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves module re-evaluation while keeping the real test-mode email harness"},
+        {"type": "vi.mock", "target": "@/lib/rate-limit", "layer": "rate-limit", "risk": "low", "disposition": "necessary", "reason": "Pass-through mock preserves Vitest module re-evaluation while keeping the real in-memory rate-limit implementation"}
       ],
       "vi_fn_count": 0
     }

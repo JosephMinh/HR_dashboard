@@ -1,0 +1,264 @@
+{
+  "meta": {
+    "generated_at": "2026-03-17T19:05:00Z",
+    "generator": "HazyBay mock audit (hr-kfwh.1)",
+    "test_files_scanned": 55,
+    "total_mock_instances": 87
+  },
+  "summary": {
+    "vi_mock": 68,
+    "vi_stubGlobal": 3,
+    "vi_stubEnv": 11,
+    "vi_spyOn": 4,
+    "globalThis_fetch": 1,
+    "async_mocks": 12,
+    "sync_mocks": 56,
+    "pass_through_mocks": 6
+  },
+  "modules_most_mocked": {
+    "@/lib/prisma": 13,
+    "@/lib/auth": 8,
+    "next/navigation": 7,
+    "@/lib/validations": 5,
+    "@/lib/audit": 5,
+    "@/lib/storage": 5,
+    "@/hooks/queries": 3,
+    "@/lib/rate-limit": 4,
+    "@/lib/email": 2,
+    "nodemailer": 1,
+    "next-auth": 1,
+    "next-auth/react": 1,
+    "zod": 1,
+    "@tanstack/react-query": 2,
+    "@/lib/api-client": 2,
+    "next/link": 1,
+    "@/lib/status-config": 1
+  },
+  "mocks": [
+    {
+      "file": "__tests__/unit/auth-config.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 14, "module": "next-auth", "layer": "auth", "async": false, "disposition": "necessary", "risk": "medium", "reason": "NextAuth internals not suitable for real invocation in unit tests"},
+        {"line": 18, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock hides real query behavior; integration test covers this"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/all-jobs-table.test.tsx",
+      "type": "unit",
+      "mocks": [
+        {"line": 12, "module": "next/navigation", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Router mocking is standard for component tests"},
+        {"line": 17, "module": "@/hooks/queries", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Query hook mocking isolates component rendering"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/premium-ux-interactions.test.tsx",
+      "type": "unit",
+      "mocks": [
+        {"line": 22, "module": "next/navigation", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Standard component test router mock"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/candidates-pipeline-cache.test.tsx",
+      "type": "unit",
+      "mocks": [
+        {"line": 18, "module": "@/lib/api-client", "layer": "network", "async": false, "disposition": "necessary", "risk": "low", "reason": "API client mock for component isolation"},
+        {"line": 35, "module": "next/link", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Link component mock for testing"},
+        {"line": 42, "module": "next/navigation", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Standard router mock"},
+        {"line": 50, "module": "@/lib/status-config", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Config mock for test control"},
+        {"line": 74, "module": "@/hooks/queries", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Query hook isolation"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/candidates-post-route.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 13, "module": "@/lib/auth", "layer": "auth", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "Auth mock in route test hides real auth flow; integration test with auth harness is better"},
+        {"line": 17, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock hides real query/constraint behavior"},
+        {"line": 34, "module": "@/lib/audit", "layer": "audit", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Audit mock prevents verifying real audit log writes"},
+        {"line": 40, "module": "@/lib/validations", "layer": "validation", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Validation mock hides real schema enforcement"},
+        {"line": 45, "module": "@/lib/storage", "layer": "storage", "async": false, "disposition": "necessary", "risk": "low", "reason": "S3 storage requires external service; mock is appropriate"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/applications-detail-route.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 11, "module": "@/lib/auth", "layer": "auth", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "Auth mock hides real auth enforcement"},
+        {"line": 15, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock hides query behavior"},
+        {"line": 25, "module": "@/lib/audit", "layer": "audit", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Audit mock skips real logging"},
+        {"line": 31, "module": "@/lib/validations", "layer": "validation", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Validation mock hides schema enforcement"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/candidate-detail-route.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 4, "module": "zod", "layer": "validation", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Zod mock allows invalid data through"},
+        {"line": 21, "module": "@/lib/auth", "layer": "auth", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "Auth mock hides real auth flow"},
+        {"line": 25, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock hides query behavior"},
+        {"line": 34, "module": "@/lib/audit", "layer": "audit", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Audit mock skips logging"},
+        {"line": 39, "module": "@/lib/storage", "layer": "storage", "async": false, "disposition": "necessary", "risk": "low", "reason": "External S3 dependency"},
+        {"line": 47, "module": "@/lib/validations", "layer": "validation", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Validation mock"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/auth-enforcement-api.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 17, "module": "@/lib/auth", "layer": "auth", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "Auth mock in enforcement test defeats the purpose"},
+        {"line": 21, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock hides constraints"},
+        {"line": 33, "module": "@/lib/audit", "layer": "audit", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Audit mock"},
+        {"line": 38, "module": "@/lib/storage", "layer": "storage", "async": false, "disposition": "necessary", "risk": "low", "reason": "External S3"},
+        {"line": 48, "module": "@/lib/validations", "layer": "validation", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Validation mock"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/jobs-route.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 10, "module": "@/lib/auth", "layer": "auth", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "Auth mock hides real auth"},
+        {"line": 14, "module": "@/lib/audit", "layer": "audit", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Audit mock"},
+        {"line": 19, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/candidates-route.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 7, "module": "@/lib/auth", "layer": "auth", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "Auth mock"},
+        {"line": 11, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock"},
+        {"line": 21, "module": "@/lib/validations", "layer": "validation", "async": false, "disposition": "replaceable_later", "risk": "medium", "reason": "Validation mock"},
+        {"line": 26, "module": "@/lib/storage", "layer": "storage", "async": false, "disposition": "necessary", "risk": "low", "reason": "External S3"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/cleanup-orphaned-resumes-route.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 7, "module": "@/lib/prisma", "layer": "db", "async": false, "disposition": "replaceable_now", "risk": "high", "reason": "DB mock hides real data state"},
+        {"line": 15, "module": "@/lib/storage", "layer": "storage", "async": false, "disposition": "necessary", "risk": "low", "reason": "External S3 dependency"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/email-service.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 16, "module": "nodemailer", "layer": "email", "async": false, "disposition": "necessary", "risk": "low", "reason": "SMTP transport requires external server; mock is appropriate for unit testing"}
+      ],
+      "stubs": [
+        {"lines": [120,121,123,124,125,126,127,128,176,177,179,180,216,217,218,219], "type": "vi.stubEnv", "layer": "environment", "disposition": "necessary", "risk": "low", "reason": "Environment stubs for SMTP config testing"},
+        {"lines": [184,196,223], "type": "vi.spyOn", "target": "console.log", "layer": "other", "disposition": "necessary", "risk": "low", "reason": "Console spy to verify log output"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/api-client.test.ts",
+      "type": "unit",
+      "stubs": [
+        {"lines": [12,32,59], "type": "vi.stubGlobal", "target": "fetch", "layer": "network", "disposition": "necessary", "risk": "low", "reason": "Fetch mock for API client unit testing"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/storage-list-objects.test.ts",
+      "type": "unit",
+      "stubs": [
+        {"lines": [43,91], "type": "vi.spyOn", "target": "S3Client.prototype.send", "layer": "storage", "disposition": "necessary", "risk": "low", "reason": "S3 client spy avoids real AWS calls"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/candidates-page.test.tsx",
+      "type": "unit",
+      "mocks": [
+        {"line": 11, "module": "next/navigation", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Router mock for component test"}
+      ],
+      "stubs": [
+        {"lines": [46], "type": "globalThis.fetch", "layer": "network", "disposition": "replaceable_later", "risk": "medium", "reason": "Direct fetch assignment should use vi.stubGlobal"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/query-hooks.test.ts",
+      "type": "unit",
+      "mocks": [
+        {"line": 124, "module": "@tanstack/react-query", "layer": "ui_hooks", "async": true, "disposition": "necessary", "risk": "low", "reason": "TanStack Query mock for hook testing"},
+        {"line": 143, "module": "@/lib/api-client", "layer": "network", "async": false, "disposition": "necessary", "risk": "low", "reason": "API client mock for hook isolation"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/add-candidate-dialog.test.tsx",
+      "type": "unit",
+      "mocks": [
+        {"line": 11, "module": "@tanstack/react-query", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Query client mock"},
+        {"line": 15, "module": "@/hooks/queries", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Query hooks mock"},
+        {"line": 19, "module": "next/navigation", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Router mock"}
+      ]
+    },
+    {
+      "file": "__tests__/unit/form-ux-regressions.test.tsx",
+      "type": "unit",
+      "mocks": [
+        {"line": 24, "module": "next/navigation", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Router mock"},
+        {"line": 33, "module": "next-auth/react", "layer": "auth", "async": false, "disposition": "necessary", "risk": "low", "reason": "Auth hook mock for component isolation"},
+        {"line": 37, "module": "@/hooks/queries", "layer": "ui_hooks", "async": false, "disposition": "necessary", "risk": "low", "reason": "Query hooks mock"}
+      ]
+    },
+    {
+      "file": "__tests__/integration/email-harness.test.ts",
+      "type": "integration",
+      "mocks": [
+        {"line": 19, "module": "@/lib/prisma", "layer": "db", "async": true, "disposition": "necessary", "risk": "low", "reason": "Redirects to test DB — required for integration tests"},
+        {"line": 25, "module": "@/lib/rate-limit", "layer": "rate_limit", "async": true, "disposition": "replaceable_now", "risk": "medium", "reason": "Pass-through mock; real rate-limit harness available (hr-kfwh.10)"}
+      ]
+    },
+    {
+      "file": "__tests__/integration/users-admin-api.test.ts",
+      "type": "integration",
+      "mocks": [
+        {"line": 31, "module": "@/lib/prisma", "layer": "db", "async": true, "disposition": "necessary", "risk": "low", "reason": "Redirects to test DB"},
+        {"line": 39, "module": "@/lib/email", "layer": "email", "async": true, "disposition": "replaceable_now", "risk": "medium", "reason": "Email mock prevents real delivery testing; email harness available"},
+        {"line": 42, "module": "@/lib/rate-limit", "layer": "rate_limit", "async": true, "disposition": "replaceable_now", "risk": "medium", "reason": "Pass-through mock; harness available"}
+      ]
+    },
+    {
+      "file": "__tests__/integration/real-auth-coverage.test.ts",
+      "type": "integration",
+      "mocks": [
+        {"line": 35, "module": "@/lib/prisma", "layer": "db", "async": true, "disposition": "necessary", "risk": "low", "reason": "Redirects to test DB"},
+        {"line": 41, "module": "@/lib/email", "layer": "email", "async": true, "disposition": "replaceable_now", "risk": "medium", "reason": "Email pass-through mock"},
+        {"line": 44, "module": "@/lib/rate-limit", "layer": "rate_limit", "async": true, "disposition": "replaceable_now", "risk": "medium", "reason": "Rate-limit pass-through mock"}
+      ]
+    },
+    {
+      "file": "__tests__/integration/password-setup-api.test.ts",
+      "type": "integration",
+      "mocks": [
+        {"line": 16, "module": "@/lib/prisma", "layer": "db", "async": true, "disposition": "necessary", "risk": "low", "reason": "Redirects to test DB"},
+        {"line": 22, "module": "@/lib/rate-limit", "layer": "rate_limit", "async": true, "disposition": "replaceable_now", "risk": "medium", "reason": "Rate-limit pass-through"}
+      ]
+    },
+    {
+      "file": "__tests__/integration/resume-upload.test.ts",
+      "type": "integration",
+      "mocks": [
+        {"line": 16, "module": "@/lib/storage", "layer": "storage", "async": true, "disposition": "replaceable_later", "risk": "medium", "reason": "Storage mock; real harness planned (hr-kfwh.14)"}
+      ]
+    },
+    {
+      "file": "__tests__/integration/users-self-service.test.ts",
+      "type": "integration",
+      "mocks": [
+        {"line": 23, "module": "@/lib/prisma", "layer": "db", "async": true, "disposition": "necessary", "risk": "low", "reason": "Redirects to test DB"},
+        {"line": 30, "module": "@/lib/rate-limit", "layer": "rate_limit", "async": true, "disposition": "replaceable_now", "risk": "medium", "reason": "Rate-limit pass-through"}
+      ]
+    }
+  ],
+  "files_without_mocks": [
+    "__tests__/unit/rate-limit.test.ts",
+    "__tests__/unit/password-policy.test.ts",
+    "__tests__/unit/validation-schemas.test.ts",
+    "__tests__/unit/wfp-import-parsers.test.ts",
+    "__tests__/unit/wfp-sanitize.test.ts",
+    "__tests__/unit/wfp-normalize.test.ts",
+    "__tests__/unit/wfp-ids.test.ts",
+    "src/lib/__tests__/permissions.test.ts"
+  ]
+}
