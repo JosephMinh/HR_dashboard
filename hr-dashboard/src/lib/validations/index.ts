@@ -32,8 +32,11 @@ export {
   JobStatus,
   JobPriority,
   PipelineHealth,
+  Horizon,
   CandidateSource,
   ApplicationStage,
+  TradeoffRowType,
+  MatchedStatus,
   // Job schemas
   JobSchema,
   JobUpdateSchema,

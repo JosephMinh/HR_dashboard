@@ -56,6 +56,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         },
         orderBy: { updatedAt: 'desc' },
       },
+      _count: {
+        select: {
+          headcountProjections: true,
+          tradeoffSources: true,
+          tradeoffTargets: true,
+        },
+      },
     },
   })
 
@@ -85,7 +92,35 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     closedAt: job.closedAt?.toISOString() ?? null,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
+    // WFP provenance
+    importKey: job.importKey,
+    sourceSheet: job.sourceSheet,
+    sourceRow: job.sourceRow,
+    tempJobId: job.tempJobId,
+    // WFP metadata
+    function: job.function,
+    employeeType: job.employeeType,
+    level: job.level,
+    functionalPriority: job.functionalPriority,
+    corporatePriority: job.corporatePriority,
+    asset: job.asset,
+    keyCapability: job.keyCapability,
+    businessRationale: job.businessRationale,
+    milestone: job.milestone,
+    talentAssessment: job.talentAssessment,
+    horizon: job.horizon,
+    isTradeoff: job.isTradeoff,
+    recruitingStatus: job.recruitingStatus,
+    fpaLevel: job.fpaLevel,
+    fpaTiming: job.fpaTiming,
+    fpaNote: job.fpaNote,
+    fpaApproved: job.fpaApproved,
+    hiredName: job.hiredName,
+    hibobId: job.hibobId,
+    notes: job.notes,
     activeCandidateCount,
+    headcountProjectionCount: job._count.headcountProjections,
+    tradeoffCount: job._count.tradeoffSources + job._count.tradeoffTargets,
     applications: job.applications.map(app => ({
       id: app.id,
       stage: app.stage,
@@ -103,6 +138,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   })
 }
 
+// WFP provenance fields that are immutable via API (set only by importer)
+const WFP_PROVENANCE_FIELDS = ['importKey', 'sourceSheet', 'sourceRow', 'tempJobId'] as const
+
 interface UpdateJobInput {
   title?: string
   department?: string
@@ -117,6 +155,27 @@ interface UpdateJobInput {
   openedAt?: string | null
   targetFillDate?: string | null
   closedAt?: string | null
+  // WFP mutable metadata fields
+  function?: string | null
+  employeeType?: string | null
+  level?: string | null
+  functionalPriority?: string | null
+  corporatePriority?: string | null
+  asset?: string | null
+  keyCapability?: string | null
+  businessRationale?: string | null
+  milestone?: string | null
+  talentAssessment?: string | null
+  horizon?: string | null
+  isTradeoff?: boolean
+  recruitingStatus?: string | null
+  fpaLevel?: string | null
+  fpaTiming?: string | null
+  fpaNote?: string | null
+  fpaApproved?: string | null
+  hiredName?: string | null
+  hibobId?: number | null
+  notes?: string | null
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
@@ -152,6 +211,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  // Reject mutations to WFP provenance fields (immutable, set only by importer)
+  for (const field of WFP_PROVENANCE_FIELDS) {
+    if (hasOwn(body as Record<string, unknown>, field)) {
+      return NextResponse.json(
+        { error: `Cannot update provenance field: ${field}` },
+        { status: 400 },
+      )
+    }
   }
 
   // Validate enums if provided
@@ -233,6 +302,36 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
   if (body.isCritical !== undefined) {
     data.isCritical = body.isCritical
+  }
+
+  // WFP mutable metadata fields (nullable strings, boolean, nullable int)
+  const nullableStringFields = [
+    'function', 'employeeType', 'level', 'functionalPriority', 'corporatePriority',
+    'asset', 'keyCapability', 'businessRationale', 'milestone', 'talentAssessment',
+    'horizon', 'recruitingStatus', 'fpaLevel', 'fpaTiming', 'fpaNote', 'fpaApproved',
+    'hiredName', 'notes',
+  ] as const
+  for (const field of nullableStringFields) {
+    if (body[field] !== undefined) {
+      data[field] = body[field] === null ? null : String(body[field]).trim() || null
+    }
+  }
+  if (body.isTradeoff !== undefined) {
+    data.isTradeoff = Boolean(body.isTradeoff)
+  }
+  if (body.hibobId !== undefined) {
+    if (body.hibobId !== null && (!Number.isInteger(body.hibobId) || body.hibobId < 0)) {
+      return NextResponse.json({ error: 'hibobId must be a non-negative integer' }, { status: 400 })
+    }
+    data.hibobId = body.hibobId
+  }
+
+  // Validate horizon enum if provided
+  if (body.horizon !== undefined && body.horizon !== null) {
+    const validHorizons = ['2026', 'Beyond 2026']
+    if (!validHorizons.includes(body.horizon)) {
+      return NextResponse.json({ error: 'Invalid horizon value' }, { status: 400 })
+    }
   }
 
   // Parse dates
@@ -353,6 +452,26 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       openedAt: existing.openedAt?.toISOString() ?? null,
       targetFillDate: existing.targetFillDate?.toISOString() ?? null,
       closedAt: existing.closedAt?.toISOString() ?? null,
+      function: existing.function,
+      employeeType: existing.employeeType,
+      level: existing.level,
+      functionalPriority: existing.functionalPriority,
+      corporatePriority: existing.corporatePriority,
+      asset: existing.asset,
+      keyCapability: existing.keyCapability,
+      businessRationale: existing.businessRationale,
+      milestone: existing.milestone,
+      talentAssessment: existing.talentAssessment,
+      horizon: existing.horizon,
+      isTradeoff: existing.isTradeoff,
+      recruitingStatus: existing.recruitingStatus,
+      fpaLevel: existing.fpaLevel,
+      fpaTiming: existing.fpaTiming,
+      fpaNote: existing.fpaNote,
+      fpaApproved: existing.fpaApproved,
+      hiredName: existing.hiredName,
+      hibobId: existing.hibobId,
+      notes: existing.notes,
     },
     after: {
       title: job.title,
@@ -368,6 +487,26 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       openedAt: job.openedAt?.toISOString() ?? null,
       targetFillDate: job.targetFillDate?.toISOString() ?? null,
       closedAt: job.closedAt?.toISOString() ?? null,
+      function: job.function,
+      employeeType: job.employeeType,
+      level: job.level,
+      functionalPriority: job.functionalPriority,
+      corporatePriority: job.corporatePriority,
+      asset: job.asset,
+      keyCapability: job.keyCapability,
+      businessRationale: job.businessRationale,
+      milestone: job.milestone,
+      talentAssessment: job.talentAssessment,
+      horizon: job.horizon,
+      isTradeoff: job.isTradeoff,
+      recruitingStatus: job.recruitingStatus,
+      fpaLevel: job.fpaLevel,
+      fpaTiming: job.fpaTiming,
+      fpaNote: job.fpaNote,
+      fpaApproved: job.fpaApproved,
+      hiredName: job.hiredName,
+      hibobId: job.hibobId,
+      notes: job.notes,
     },
     ipAddress: getClientIp(request),
   })
@@ -389,6 +528,32 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     closedAt: job.closedAt?.toISOString() ?? null,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
+    // WFP provenance
+    importKey: job.importKey,
+    sourceSheet: job.sourceSheet,
+    sourceRow: job.sourceRow,
+    tempJobId: job.tempJobId,
+    // WFP metadata
+    function: job.function,
+    employeeType: job.employeeType,
+    level: job.level,
+    functionalPriority: job.functionalPriority,
+    corporatePriority: job.corporatePriority,
+    asset: job.asset,
+    keyCapability: job.keyCapability,
+    businessRationale: job.businessRationale,
+    milestone: job.milestone,
+    talentAssessment: job.talentAssessment,
+    horizon: job.horizon,
+    isTradeoff: job.isTradeoff,
+    recruitingStatus: job.recruitingStatus,
+    fpaLevel: job.fpaLevel,
+    fpaTiming: job.fpaTiming,
+    fpaNote: job.fpaNote,
+    fpaApproved: job.fpaApproved,
+    hiredName: job.hiredName,
+    hibobId: job.hibobId,
+    notes: job.notes,
   })
 }
 

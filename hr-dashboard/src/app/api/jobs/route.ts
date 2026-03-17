@@ -11,7 +11,7 @@ const INACTIVE_STAGES: ApplicationStage[] = [
   ApplicationStage.WITHDRAWN,
 ]
 
-type SortField = 'title' | 'status' | 'targetFillDate' | 'updatedAt' | 'department' | 'openedAt'
+type SortField = 'title' | 'status' | 'targetFillDate' | 'updatedAt' | 'department' | 'openedAt' | 'horizon' | 'function' | 'level' | 'employeeType'
 type SortOrder = 'asc' | 'desc'
 
 function isTargetBeforeOpened(openedAt: Date | null | undefined, targetFillDate: Date | null | undefined): boolean {
@@ -58,6 +58,12 @@ export async function GET(request: NextRequest) {
   const departmentParam = searchParams.get('department')
   const pipelineHealthParam = searchParams.get('pipelineHealth')
   const criticalParam = searchParams.get('critical')
+  // WFP filter parameters
+  const employeeTypeParam = searchParams.get('employeeType')
+  const functionParam = searchParams.get('function')
+  const levelParam = searchParams.get('level')
+  const horizonParam = searchParams.get('horizon')
+  const assetParam = searchParams.get('asset')
   // Limit search length to prevent performance issues with very long queries
   const search = searchParams.get('search')?.slice(0, 200) ?? null
   const sortParam = searchParams.get('sort') as SortField | null
@@ -68,6 +74,10 @@ export async function GET(request: NextRequest) {
     'updatedAt',
     'department',
     'openedAt',
+    'horizon',
+    'function',
+    'level',
+    'employeeType',
   ]
 
   // Validate sort field
@@ -130,6 +140,52 @@ export async function GET(request: NextRequest) {
     where.isCritical = true
   }
 
+  // WFP filters
+  if (employeeTypeParam) {
+    const values = employeeTypeParam.split(',').map(v => v.trim()).filter(Boolean)
+    if (values.length === 1) {
+      where.employeeType = values[0]
+    } else if (values.length > 1) {
+      where.employeeType = { in: values }
+    }
+  }
+
+  if (functionParam) {
+    const values = functionParam.split(',').map(v => v.trim()).filter(Boolean)
+    if (values.length === 1) {
+      where.function = values[0]
+    } else if (values.length > 1) {
+      where.function = { in: values }
+    }
+  }
+
+  if (levelParam) {
+    const values = levelParam.split(',').map(v => v.trim()).filter(Boolean)
+    if (values.length === 1) {
+      where.level = values[0]
+    } else if (values.length > 1) {
+      where.level = { in: values }
+    }
+  }
+
+  if (horizonParam) {
+    const values = horizonParam.split(',').map(v => v.trim()).filter(Boolean)
+    if (values.length === 1) {
+      where.horizon = values[0]
+    } else if (values.length > 1) {
+      where.horizon = { in: values }
+    }
+  }
+
+  if (assetParam) {
+    const values = assetParam.split(',').map(v => v.trim()).filter(Boolean)
+    if (values.length === 1) {
+      where.asset = values[0]
+    } else if (values.length > 1) {
+      where.asset = { in: values }
+    }
+  }
+
   if (search) {
     where.title = { contains: search, mode: 'insensitive' }
   }
@@ -155,6 +211,14 @@ export async function GET(request: NextRequest) {
     orderBy.push({ openedAt: sortOrder })
   } else if (sortField === 'department') {
     orderBy.push({ department: sortOrder })
+  } else if (sortField === 'horizon') {
+    orderBy.push({ horizon: sortOrder })
+  } else if (sortField === 'function') {
+    orderBy.push({ function: sortOrder })
+  } else if (sortField === 'level') {
+    orderBy.push({ level: sortOrder })
+  } else if (sortField === 'employeeType') {
+    orderBy.push({ employeeType: sortOrder })
   } else {
     orderBy.push({ updatedAt: sortOrder })
   }
@@ -204,6 +268,32 @@ export async function GET(request: NextRequest) {
       closedAt: job.closedAt?.toISOString() ?? null,
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
+      // WFP provenance fields (read-only)
+      importKey: job.importKey,
+      sourceSheet: job.sourceSheet,
+      sourceRow: job.sourceRow,
+      tempJobId: job.tempJobId,
+      // WFP metadata fields
+      function: job.function,
+      employeeType: job.employeeType,
+      level: job.level,
+      functionalPriority: job.functionalPriority,
+      corporatePriority: job.corporatePriority,
+      asset: job.asset,
+      keyCapability: job.keyCapability,
+      businessRationale: job.businessRationale,
+      milestone: job.milestone,
+      talentAssessment: job.talentAssessment,
+      horizon: job.horizon,
+      isTradeoff: job.isTradeoff,
+      recruitingStatus: job.recruitingStatus,
+      fpaLevel: job.fpaLevel,
+      fpaTiming: job.fpaTiming,
+      fpaNote: job.fpaNote,
+      fpaApproved: job.fpaApproved,
+      hiredName: job.hiredName,
+      hibobId: job.hibobId,
+      notes: job.notes,
       ...(includeCount && 'applications' in job ? {
         activeCandidateCount: (job as typeof job & { applications: { id: string }[] }).applications.length,
       } : {}),
@@ -391,5 +481,29 @@ export async function POST(request: NextRequest) {
     closedAt: job.closedAt?.toISOString() ?? null,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
+    importKey: job.importKey,
+    sourceSheet: job.sourceSheet,
+    sourceRow: job.sourceRow,
+    tempJobId: job.tempJobId,
+    function: job.function,
+    employeeType: job.employeeType,
+    level: job.level,
+    functionalPriority: job.functionalPriority,
+    corporatePriority: job.corporatePriority,
+    asset: job.asset,
+    keyCapability: job.keyCapability,
+    businessRationale: job.businessRationale,
+    milestone: job.milestone,
+    talentAssessment: job.talentAssessment,
+    horizon: job.horizon,
+    isTradeoff: job.isTradeoff,
+    recruitingStatus: job.recruitingStatus,
+    fpaLevel: job.fpaLevel,
+    fpaTiming: job.fpaTiming,
+    fpaNote: job.fpaNote,
+    fpaApproved: job.fpaApproved,
+    hiredName: job.hiredName,
+    hibobId: job.hibobId,
+    notes: job.notes,
   }, { status: 201 })
 }

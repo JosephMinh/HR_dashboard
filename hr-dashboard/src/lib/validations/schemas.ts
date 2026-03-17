@@ -9,6 +9,7 @@ import z from 'zod'
 export const JobStatus = z.enum(['OPEN', 'CLOSED', 'ON_HOLD'])
 export const JobPriority = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
 export const PipelineHealth = z.enum(['AHEAD', 'ON_TRACK', 'BEHIND'])
+export const Horizon = z.enum(['2026', 'Beyond 2026'])
 export const CandidateSource = z.enum(['REFERRAL', 'LINKEDIN', 'CAREERS_PAGE', 'AGENCY', 'OTHER'])
 export const ApplicationStage = z.enum([
   'NEW',
@@ -20,6 +21,32 @@ export const ApplicationStage = z.enum([
   'REJECTED',
   'WITHDRAWN',
 ])
+
+// WFP metadata fields shared between create and update schemas.
+// Provenance fields (importKey, sourceSheet, sourceRow, tempJobId) are
+// excluded — they are set only by the WFP importer, never via the API.
+const wfpMutableFields = {
+  function: z.string().optional().nullable(),
+  employeeType: z.string().optional().nullable(),
+  level: z.string().optional().nullable(),
+  functionalPriority: z.string().optional().nullable(),
+  corporatePriority: z.string().optional().nullable(),
+  asset: z.string().optional().nullable(),
+  keyCapability: z.string().optional().nullable(),
+  businessRationale: z.string().optional().nullable(),
+  milestone: z.string().optional().nullable(),
+  talentAssessment: z.string().optional().nullable(),
+  horizon: Horizon.optional().nullable(),
+  isTradeoff: z.boolean().optional(),
+  recruitingStatus: z.string().optional().nullable(),
+  fpaLevel: z.string().optional().nullable(),
+  fpaTiming: z.string().optional().nullable(),
+  fpaNote: z.string().optional().nullable(),
+  fpaApproved: z.string().optional().nullable(),
+  hiredName: z.string().optional().nullable(),
+  hibobId: z.number().int().optional().nullable(),
+  notes: z.string().optional().nullable(),
+}
 
 // Job schema
 export const JobSchema = z
@@ -36,6 +63,7 @@ export const JobSchema = z
     isCritical: z.boolean().default(false),
     openedAt: z.coerce.date().optional().nullable(),
     targetFillDate: z.coerce.date().optional().nullable(),
+    ...wfpMutableFields,
   })
   .refine(
     (data) => {
@@ -62,7 +90,8 @@ export const JobSchema = z
     }
   )
 
-// Partial job schema for updates (defined without refinements to allow partial)
+// Partial job schema for updates (defined without refinements to allow partial).
+// Provenance fields (importKey, sourceSheet, sourceRow, tempJobId) are immutable.
 export const JobUpdateSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(200, 'Title must be at most 200 characters').optional(),
   department: z.string().min(1, 'Department is required').optional(),
@@ -76,6 +105,7 @@ export const JobUpdateSchema = z.object({
   isCritical: z.boolean().optional(),
   openedAt: z.coerce.date().optional().nullable(),
   targetFillDate: z.coerce.date().optional().nullable(),
+  ...wfpMutableFields,
 })
 
 // Candidate schema
@@ -175,6 +205,12 @@ export const ResumeUploadSchema = z
       })
     }
   })
+
+// Tradeoff row types matching import data
+export const TradeoffRowType = z.enum(['PAIR', 'SOURCE_ONLY', 'NOTE'])
+
+// Headcount projection filter for matched status
+export const MatchedStatus = z.enum(['matched', 'unmatched'])
 
 // Type inference
 export type Job = z.infer<typeof JobSchema>
