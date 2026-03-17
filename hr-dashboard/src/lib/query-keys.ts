@@ -14,6 +14,7 @@ export interface JobsFilters {
   department?: string | string[]
   pipelineHealth?: string
   critical?: string
+  horizon?: string
   search?: string
   sort?: string
   order?: 'asc' | 'desc'
@@ -41,6 +42,27 @@ export interface UsersFilters {
   active?: string
   page?: number
   limit?: number
+}
+
+export interface TradeoffsFilters {
+  rowType?: string
+  status?: string
+  sourceDepartment?: string
+  targetDepartment?: string
+  sort?: string
+  order?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
+}
+
+export interface HeadcountFilters {
+  department?: string
+  level?: string
+  matchedStatus?: 'matched' | 'unmatched'
+  sort?: string
+  order?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
 }
 
 export interface DashboardFilters {
@@ -77,6 +99,13 @@ export const queryCachePolicy: {
     byJob: CachePolicy
     byCandidate: CachePolicy
   }
+  tradeoffs: {
+    list: CachePolicy
+  }
+  headcount: {
+    list: CachePolicy
+    summary: CachePolicy
+  }
   users: {
     list: CachePolicy
   }
@@ -97,6 +126,13 @@ export const queryCachePolicy: {
     detail: { staleTime: 30_000, gcTime: 10 * 60_000, maxRetries: 1 },
     byJob: { staleTime: 10_000, gcTime: 5 * 60_000, maxRetries: 1 },
     byCandidate: { staleTime: 10_000, gcTime: 5 * 60_000, maxRetries: 1 },
+  },
+  tradeoffs: {
+    list: { staleTime: 60_000, gcTime: 10 * 60_000, maxRetries: 1 },
+  },
+  headcount: {
+    list: { staleTime: 60_000, gcTime: 10 * 60_000, maxRetries: 1 },
+    summary: { staleTime: 2 * 60_000, gcTime: 10 * 60_000, maxRetries: 1 },
   },
   users: {
     list: { staleTime: 15_000, gcTime: 5 * 60_000, maxRetries: 1 },
@@ -161,6 +197,30 @@ export const queryKeys = {
       filters
         ? ([...queryKeys.dashboard.all, 'stats', filters] as const)
         : ([...queryKeys.dashboard.all, 'stats'] as const),
+  },
+
+  // Tradeoffs
+  tradeoffs: {
+    all: ['tradeoffs'] as const,
+    lists: () => [...queryKeys.tradeoffs.all, 'list'] as const,
+    list: (filters?: TradeoffsFilters) =>
+      filters
+        ? ([...queryKeys.tradeoffs.lists(), filters] as const)
+        : queryKeys.tradeoffs.lists(),
+  },
+
+  // Headcount Projections
+  headcount: {
+    all: ['headcount'] as const,
+    lists: () => [...queryKeys.headcount.all, 'list'] as const,
+    list: (filters?: HeadcountFilters) =>
+      filters
+        ? ([...queryKeys.headcount.lists(), filters] as const)
+        : queryKeys.headcount.lists(),
+    summary: (department?: string) =>
+      department
+        ? ([...queryKeys.headcount.all, 'summary', department] as const)
+        : ([...queryKeys.headcount.all, 'summary'] as const),
   },
 
   // Users (for admin/settings)

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { cn } from '@/lib/utils'
-import { Home, Briefcase, Users, Shield, X } from 'lucide-react'
+import { Home, Briefcase, Users, Shield, X, ArrowLeftRight, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { canManageUsers } from '@/lib/permissions'
 import type { Role } from '@/types/auth'
@@ -18,6 +18,8 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: Home },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
   { href: '/candidates', label: 'Candidates', icon: Users },
+  { href: '/tradeoffs', label: 'Tradeoffs', icon: ArrowLeftRight },
+  { href: '/headcount', label: 'Headcount', icon: BarChart3 },
 ]
 
 const adminItems = [

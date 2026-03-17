@@ -50,6 +50,24 @@ export {
   type ActivityItem,
 } from './use-dashboard'
 
+// Tradeoffs
+export {
+  useTradeoffsQuery,
+  type Tradeoff,
+  type TradeoffsResponse,
+  type TradeoffJobSummary,
+} from './use-tradeoffs'
+
+// Headcount Projections
+export {
+  useHeadcountQuery,
+  useHeadcountSummaryQuery,
+  type HeadcountProjection,
+  type HeadcountResponse,
+  type HeadcountSummaryResponse,
+  type HeadcountJobSummary,
+} from './use-headcount'
+
 // Users (admin)
 export {
   useUsersQuery,
