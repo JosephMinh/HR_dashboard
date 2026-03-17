@@ -119,7 +119,6 @@ export function getClientIp(request: Request): string | null {
 /** Truncate and strip non-printable chars to prevent stored XSS and DB bloat */
 function sanitizeIp(raw: string): string {
   // IP addresses are at most 45 chars (IPv6 mapped IPv4: "::ffff:192.168.1.1")
-  // eslint-disable-next-line no-control-regex
   return raw.slice(0, 45).replace(/[^\x20-\x7E]/g, '')
 }
 

@@ -210,7 +210,6 @@ describe("parseBudgetSheet", () => {
   it("preserves raw tempJobId for complex values", () => {
     // At least some projections should have rawTempJobId set
     // (the "6000 (5357 Previously)" case)
-    const withRaw = result.projections.filter((p) => p.rawTempJobId != null)
     // This may be 0 if no complex IDs exist, which is fine
     // Just verify the field exists on all records
     for (const p of result.projections) {

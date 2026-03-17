@@ -14,6 +14,15 @@ import {
   waitForDatabase,
   assertDatabaseClean,
 } from "./test-db"
+import {
+  uniqueId,
+  uniqueEmail,
+  uniqueImportKey,
+  resetFixtureCounter,
+  TEST_DEPARTMENTS,
+  TEST_LEVELS,
+  TEST_HORIZONS,
+} from "./fixtures"
 import { TestLogger } from "./logger"
 import type { Prisma } from "@/generated/prisma/client"
 
@@ -26,7 +35,7 @@ export {
   TEST_DEPARTMENTS,
   TEST_LEVELS,
   TEST_HORIZONS,
-} from "./fixtures"
+}
 
 // Re-export for convenience
 export {
@@ -49,6 +58,8 @@ export { setupEmailHarness } from "./email-harness"
 export type { EmailHarness } from "./email-harness"
 export { setupRateLimitHarness } from "./rate-limit-harness"
 export type { RateLimitHarness } from "./rate-limit-harness"
+export { setupStorageHarness } from "./storage-harness"
+export type { StorageHarness } from "./storage-harness"
 
 /**
  * Setup integration test environment
@@ -129,8 +140,6 @@ export function setupIntegrationTests(options?: {
  */
 export function createTestFactories() {
   const prisma = () => getTestPrisma()
-  // Use fixtures for unique data generation
-  const fixtures = require("./fixtures") as typeof import("./fixtures")
 
   return {
     /**
@@ -147,7 +156,7 @@ export function createTestFactories() {
       return prisma().user.create({
         data: {
           name: data.name ?? "Test User",
-          email: data.email ?? fixtures.uniqueEmail("user"),
+          email: data.email ?? uniqueEmail("user"),
           role: data.role ?? "RECRUITER",
           passwordHash: data.passwordHash ?? "hashed-password",
         },
@@ -260,7 +269,7 @@ export function createTestFactories() {
         data: {
           firstName: data.firstName ?? "Test",
           lastName: data.lastName ?? "Candidate",
-          email: data.email ?? fixtures.uniqueEmail("candidate"),
+          email: data.email ?? uniqueEmail("candidate"),
           source: data.source ?? "LINKEDIN",
         },
       })

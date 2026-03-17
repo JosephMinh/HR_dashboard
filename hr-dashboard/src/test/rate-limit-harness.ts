@@ -179,15 +179,7 @@ export function setupRateLimitHarness(): RateLimitHarness {
     },
 
     consumeRoute(key: string, rule: RateLimitRule, count = 1) {
-      // enforceRouteRateLimit prefixes keys with "route:"
-      const storeKey = `route:${key}`
       for (let i = 0; i < count; i++) {
-        // Use consumeRateLimitMemory with a custom scope-like approach
-        // We need to write directly to the store since consumeRateLimitMemory
-        // uses predefined scopes. Instead, call enforceRouteRateLimit which
-        // handles the store key correctly.
-        // Actually, enforceRouteRateLimit writes to the store with "route:" prefix
-        // and uses the same in-memory store. We can just call it directly.
         void enforceRouteRateLimit(key, rule, virtualNow)
       }
     },

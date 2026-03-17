@@ -28,8 +28,6 @@ import type {
   ParsedJob,
   ParsedCandidate,
   ParsedApplication,
-  ParsedProjection,
-  ParsedTradeoff,
   ImportWarning,
 } from "../src/lib/import/types";
 
