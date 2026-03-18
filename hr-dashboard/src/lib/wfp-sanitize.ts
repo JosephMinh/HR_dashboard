@@ -145,6 +145,11 @@ export function mapIsTradeoff(tradeoffCell: string | null): boolean {
 
 /** Pinned "as of" date for pipeline health computation during import. */
 export const PIPELINE_HEALTH_AS_OF = new Date("2026-03-17");
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function toUtcDayStart(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
 
 export function computePipelineHealth(
   status: JobStatus,
@@ -154,10 +159,11 @@ export function computePipelineHealth(
 
   if (targetFillDate == null) return "ON_TRACK";
 
-  if (targetFillDate.getTime() < PIPELINE_HEALTH_AS_OF.getTime()) return "BEHIND";
+  const targetDayStart = toUtcDayStart(targetFillDate);
+  const asOfDayStart = toUtcDayStart(PIPELINE_HEALTH_AS_OF);
+  const diffDays = (targetDayStart - asOfDayStart) / MS_PER_DAY;
 
-  const diffMs = targetFillDate.getTime() - PIPELINE_HEALTH_AS_OF.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  if (diffDays < 0) return "BEHIND";
 
   if (diffDays <= 60) return "ON_TRACK";
   return "AHEAD";

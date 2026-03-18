@@ -189,6 +189,11 @@ describe("normalize.computePipelineHealth", () => {
     expect(computePipelineHealth(new Date("2026-03-20"), "OPEN", asOf)).toBe("ON_TRACK")
   })
 
+  it("treats same-day timestamps as ON_TRACK based on calendar date", () => {
+    const asOfWithTime = new Date("2026-03-17T12:00:00.000Z")
+    expect(computePipelineHealth(new Date("2026-03-17T00:00:00.000Z"), "OPEN", asOfWithTime)).toBe("ON_TRACK")
+  })
+
   it("returns ON_TRACK when 1-60 days out", () => {
     expect(computePipelineHealth(new Date("2026-04-15"), "OPEN", asOf)).toBe("ON_TRACK")
   })

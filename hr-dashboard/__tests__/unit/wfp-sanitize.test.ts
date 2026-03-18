@@ -237,6 +237,10 @@ describe("computePipelineHealth", () => {
     expect(computePipelineHealth("OPEN", new Date("2026-03-25"))).toBe("ON_TRACK")
   })
 
+  it("treats same-day timestamps as ON_TRACK based on calendar date", () => {
+    expect(computePipelineHealth("OPEN", new Date("2026-03-17T23:59:59.000Z"))).toBe("ON_TRACK")
+  })
+
   it("returns ON_TRACK when 1-60 days out", () => {
     // 2026-03-17 + 30 days = 2026-04-16
     expect(computePipelineHealth("OPEN", new Date("2026-04-16"))).toBe("ON_TRACK")
