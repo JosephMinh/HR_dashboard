@@ -113,7 +113,7 @@ async function resendInviteFromRow(
   const row = await getUserRow(adminPage, email)
   await row.getByRole("button", { name: /resend invite/i }).click()
   await expect(adminPage.getByText("Resend invite?")).toBeVisible({ timeout: 5_000 })
-  await adminPage.getByRole("button", { name: /^resend invite$/i }).click()
+  await adminPage.getByRole("dialog").getByRole("button", { name: /^resend invite$/i }).click()
 }
 
 test.describe("Failure-path journeys", () => {

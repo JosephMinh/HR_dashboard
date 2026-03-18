@@ -34,7 +34,6 @@
   "exclude": [
     "node_modules",
     "__tests__",
-    "prisma/import-wfp.ts",
-    "prisma/seed.ts"
+    "prisma"
   ]
 }

@@ -98,7 +98,9 @@ test.describe("Session and Auth Failures", () => {
     const demotedPage = createLoggedPage(await demotedCtx.newPage(), logger)
 
     try {
-      const appOrigin = new URL(adminPage.url()).origin
+      // adminPage hasn't navigated yet (starts at about:blank), so derive the
+      // origin from the environment rather than from page.url().
+      const appOrigin = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000"
 
       // Demoted admin logs in and verifies they can access the admin page
       await performLogin(
@@ -274,7 +276,9 @@ test.describe("User Creation Validation Failures", () => {
       const count = await prisma.user.count({ where: { email: existingEmail } })
       expect(count).toBe(1)
     } finally {
-      await adminPage.keyboard.press("Escape")
+      if (await adminPage.locator('[role="dialog"]').isVisible()) {
+        await adminPage.keyboard.press("Escape")
+      }
       await prisma.user.delete({ where: { id: existingUser.id } }).catch(() => {})
     }
   })
@@ -314,9 +318,9 @@ test.describe("User Creation Validation Failures", () => {
 
       // Now the admin session cookie still has ADMIN role in the JWT,
       // so the request will pass canManageUsers() but hit the last-admin guard.
-      const appOrigin = new URL(adminPage.url()).origin
+      // Use a relative path — adminPage.request resolves it against the configured baseURL.
       const response = await adminPage.request.delete(
-        `${appOrigin}/api/users/${targetAdmin.id}`,
+        `/api/users/${targetAdmin.id}`,
       )
 
       // Must be rejected with 400 and a clear last-admin error
@@ -515,13 +519,12 @@ test.describe("Email Delivery Failure Paths", { tag: "@failure-email" }, () => {
 
       const searchInput = adminPage.locator('input[placeholder*="Search"]')
       await searchInput.fill(testEmail)
-      await adminPage.waitForTimeout(600)
 
       const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
       await expect(userRow).toBeVisible({ timeout: 5_000 })
 
       await userRow.getByRole("button", { name: /reset pw/i }).click()
-      await adminPage.getByRole("button", { name: /^reset password$/i }).click()
+      await adminPage.getByRole("dialog").getByRole("button", { name: /^reset password$/i }).click()
 
       // Warning banner (email could not be delivered)
       await expect(
@@ -560,7 +563,6 @@ test.describe("Email Delivery Failure Paths", { tag: "@failure-email" }, () => {
 
       const searchInput = adminPage.locator('input[placeholder*="Search"]')
       await searchInput.fill(testEmail)
-      await adminPage.waitForTimeout(600)
 
       const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
       await expect(userRow).toBeVisible({ timeout: 5_000 })
@@ -571,7 +573,7 @@ test.describe("Email Delivery Failure Paths", { tag: "@failure-email" }, () => {
       await resendBtn.click()
 
       // Confirm the dialog
-      const confirmBtn = adminPage.getByRole("button", { name: /resend/i }).last()
+      const confirmBtn = adminPage.getByRole("dialog").getByRole("button", { name: /resend/i })
       await confirmBtn.click()
 
       // Warning that the invite could not be sent

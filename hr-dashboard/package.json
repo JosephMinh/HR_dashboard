@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && (DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate resolve --applied 20260316000000_init || true) && DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate deploy && HR_DASHBOARD_SEED_MODE=wfp DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma db seed && next build",
+    "build": "prisma generate && DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma migrate deploy && HR_DASHBOARD_SEED_MODE=wfp DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} prisma db seed && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "bunx vitest run",
@@ -78,7 +78,6 @@
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/uuid": "^10.0.0",
     "@vitest/coverage-istanbul": "4.0.18",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9",
