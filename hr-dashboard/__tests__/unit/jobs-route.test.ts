@@ -244,6 +244,37 @@ describe("GET /api/jobs", () => {
       }),
     )
   })
+
+  it("combines missing and concrete nullable metadata selections within one category", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "user-1", role: "RECRUITER" },
+    })
+    findManyMock.mockResolvedValue([])
+    countMock.mockResolvedValue(0)
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?location=__MISSING__&location=Remote",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    expect(countMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { location: "Remote" },
+                { OR: [{ location: null }, { location: "" }] },
+              ],
+            },
+          ],
+        }),
+      }),
+    )
+  })
 })
 
 describe("POST /api/jobs", () => {
