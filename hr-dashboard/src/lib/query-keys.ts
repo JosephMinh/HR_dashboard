@@ -16,10 +16,10 @@ export const JOBS_MISSING_FILTER_SENTINEL = JOB_FILTER_MISSING_VALUE
 export type JobsFilterParam = string | string[]
 
 export interface JobsFilters {
-  status?: string
+  status?: JobsFilterParam
   department?: JobsFilterParam
-  pipelineHealth?: string
-  priority?: string
+  pipelineHealth?: JobsFilterParam
+  priority?: JobsFilterParam
   horizon?: JobsFilterParam
   employeeType?: JobsFilterParam
   function?: JobsFilterParam

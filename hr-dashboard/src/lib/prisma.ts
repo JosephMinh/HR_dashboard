@@ -3,7 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
-function resolveAdapterSchema(connectionString: string): string | undefined {
+export function resolveAdapterSchema(connectionString: string): string | undefined {
   try {
     return new URL(connectionString).searchParams.get('schema')?.trim() || undefined
   } catch {
