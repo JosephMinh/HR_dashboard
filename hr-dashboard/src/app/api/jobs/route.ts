@@ -420,10 +420,9 @@ export async function POST(request: NextRequest) {
 
   const status = body.status ?? JobStatus.OPEN
   const pipelineHealth = body.pipelineHealth ?? null
-  const ACTIVE_STATUS_SET = new Set<JobStatus>([JobStatus.OPEN, JobStatus.OFFER, JobStatus.AGENCY])
-  if (ACTIVE_STATUS_SET.has(status) && pipelineHealth === null) {
+  if (status === JobStatus.OPEN && pipelineHealth === null) {
     return NextResponse.json(
-      { error: 'Pipeline health is required for active recruiting jobs' },
+      { error: 'Pipeline health is required for open jobs' },
       { status: 400 },
     )
   }
@@ -453,7 +452,7 @@ export async function POST(request: NextRequest) {
     isCritical: body.isCritical ?? false,
     openedAt: openedAt ?? new Date(),
     targetFillDate: targetFillDate ?? null,
-    closedAt: (status === JobStatus.HIRED || status === JobStatus.HIRED_CW) ? new Date() : null,
+    closedAt: status === JobStatus.CLOSED ? new Date() : null,
   }
 
   const job = await prisma.job.create({
