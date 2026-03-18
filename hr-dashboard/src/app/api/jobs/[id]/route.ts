@@ -326,10 +326,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     data.hibobId = body.hibobId
   }
 
-  // Validate horizon enum if provided
-  if (body.horizon !== undefined && body.horizon !== null) {
+  // Validate horizon if provided (check the trimmed value already stored in data)
+  if (data.horizon !== undefined && data.horizon !== null) {
     const validHorizons = ['2026', 'Beyond 2026']
-    if (!validHorizons.includes(body.horizon)) {
+    if (!validHorizons.includes(data.horizon as string)) {
       return NextResponse.json({ error: 'Invalid horizon value' }, { status: 400 })
     }
   }
