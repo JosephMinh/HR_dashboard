@@ -115,7 +115,7 @@ export function parseBudgetSheet(sheet: WorkSheet): BudgetResult {
       const s = sanitize(String(rawStartDate));
       if (s != null && s.toUpperCase() !== "TBD") {
         const d = new Date(s);
-        if (!isNaN(d.getTime())) startDate = d;
+        if (!Number.isNaN(d.getTime())) startDate = d;
       }
     }
 

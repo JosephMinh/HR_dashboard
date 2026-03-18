@@ -427,7 +427,7 @@ export function parseBudgetSheet(wb: WorkBook): { projections: ParsedHeadcountPr
           monthlyFte[key] = rawVal;
         } else {
           const parsed = parseFloat(String(rawVal));
-          monthlyFte[key] = isNaN(parsed) ? null : parsed;
+          monthlyFte[key] = Number.isNaN(parsed) ? null : parsed;
         }
       }
     }

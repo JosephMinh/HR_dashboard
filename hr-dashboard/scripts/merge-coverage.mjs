@@ -26,7 +26,12 @@ function ensureDir(directory) {
 }
 
 function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"))
+  const raw = fs.readFileSync(filePath, "utf8")
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new Error(`Failed to parse JSON from ${filePath}: file may be corrupt or incomplete`)
+  }
 }
 
 function writeJson(filePath, value) {

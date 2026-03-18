@@ -429,7 +429,7 @@ function parseMonthlyFte(row: RawRow): Record<string, number | null> {
         result[key] = val;
       } else {
         const parsed = parseFloat(String(val));
-        result[key] = isNaN(parsed) ? null : parsed;
+        result[key] = Number.isNaN(parsed) ? null : parsed;
       }
     }
   }
