@@ -55,7 +55,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Briefcase className="h-5 w-5 text-primary" />
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold tracking-tight text-foreground">HR Dashboard</span>
+              <span className="text-sm font-semibold tracking-tight text-foreground">Talent Dashboard</span>
               <span className="text-xs text-muted-foreground">Recruiting Ops</span>
             </div>
           </Link>
