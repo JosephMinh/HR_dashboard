@@ -7,17 +7,17 @@
 
 import { PrismaClient } from "@/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
+import { resolveAdapterSchema } from "@/lib/prisma"
 import { execSync } from "node:child_process"
+import { getTestDatabaseUrl } from "./database"
 
 // Test database URL - uses port 5433 to avoid conflicts with dev
-const TEST_DATABASE_URL =
-  process.env.DATABASE_URL_TEST ??
-  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test"
+const TEST_DATABASE_URL = getTestDatabaseUrl()
 
 // ---------------------------------------------------------------------------
 // Safety guard: never run integration tests against a production-like database
 // ---------------------------------------------------------------------------
-function assertSafeTestUrl(url: string): void {
+export function assertSafeTestUrl(url: string): void {
   const portMatch = url.match(/:(\d+)\//)
   const port = portMatch?.[1] ?? "5432"
   const dbMatch = url.match(/\/([^/?]+)(\?|$)/)
@@ -28,7 +28,7 @@ function assertSafeTestUrl(url: string): void {
       `SAFETY: Refusing to run integration tests against port 5432 (default PostgreSQL port).\n` +
         `The test database should use port 5433 to avoid accidental dev/prod data loss.\n` +
         `Current URL: ${url}\n` +
-        `Fix: Set DATABASE_URL_TEST to use port 5433, or run: npm run test:db:up`,
+        `Fix: Set DATABASE_URL_TEST to use port 5433, or run: bun run test:db:up`,
     )
   }
 
@@ -48,6 +48,7 @@ assertSafeTestUrl(TEST_DATABASE_URL)
 process.env.DATABASE_URL = TEST_DATABASE_URL
 
 let testPrisma: PrismaClient | null = null
+let schemaPushPromise: Promise<void> | null = null
 
 // Share a single PrismaClient with `@/lib/prisma` to avoid dual connection
 // pools.  `src/lib/prisma.ts` checks `globalForPrisma.prisma` before creating
@@ -98,6 +99,25 @@ export async function disconnectTestPrisma(): Promise<void> {
   }
 }
 
+function getResetOrder(prisma: PrismaClient) {
+  return [
+    () => prisma.auditLog.deleteMany(),
+    () => prisma.setPasswordToken.deleteMany(),
+    () => prisma.tradeoff.deleteMany(),
+    () => prisma.headcountProjection.deleteMany(),
+    () => prisma.application.deleteMany(),
+    () => prisma.candidate.deleteMany(),
+    () => prisma.job.deleteMany(),
+    () => prisma.user.deleteMany(),
+  ]
+}
+
+export async function resetDatabaseWithPrisma(prisma: PrismaClient): Promise<void> {
+  for (const deleteRows of getResetOrder(prisma)) {
+    await deleteRows()
+  }
+}
+
 /**
  * Reset the test database to a clean state.
  *
@@ -107,16 +127,7 @@ export async function disconnectTestPrisma(): Promise<void> {
  * connection pool has outstanding connections.
  */
 export async function resetDatabase(): Promise<void> {
-  const prisma = getTestPrisma()
-  // Delete in dependency order: children first, parents last
-  await prisma.auditLog.deleteMany()
-  await prisma.setPasswordToken.deleteMany()
-  await prisma.tradeoff.deleteMany()
-  await prisma.headcountProjection.deleteMany()
-  await prisma.application.deleteMany()
-  await prisma.candidate.deleteMany()
-  await prisma.job.deleteMany()
-  await prisma.user.deleteMany()
+  await resetDatabaseWithPrisma(getTestPrisma())
 }
 
 /**
@@ -161,12 +172,9 @@ export async function cleanTables(
   }
 }
 
-/**
- * Get row counts for all application tables.
- * Useful for verifying reset worked or debugging leftover state.
- */
-export async function getTableCounts(): Promise<Record<string, number>> {
-  const prisma = getTestPrisma()
+export async function getTableCountsWithPrisma(
+  prisma: PrismaClient,
+): Promise<Record<string, number>> {
   const [users, jobs, candidates, applications, auditLogs, setPasswordTokens, headcountProjections, tradeoffs] =
     await Promise.all([
       prisma.user.count(),
@@ -183,12 +191,24 @@ export async function getTableCounts(): Promise<Record<string, number>> {
 }
 
 /**
+ * Get row counts for all application tables.
+ * Useful for verifying reset worked or debugging leftover state.
+ */
+export async function getTableCounts(): Promise<Record<string, number>> {
+  return getTableCountsWithPrisma(getTestPrisma())
+}
+
+/**
  * Assert the database is completely empty (all tables have 0 rows).
  * Throws with a detailed report if any table has leftover data.
  * Call after resetDatabase() to verify cleanup in critical tests.
  */
 export async function assertDatabaseClean(): Promise<void> {
-  const counts = await getTableCounts()
+  await assertDatabaseCleanWithPrisma(getTestPrisma())
+}
+
+export async function assertDatabaseCleanWithPrisma(prisma: PrismaClient): Promise<void> {
+  const counts = await getTableCountsWithPrisma(prisma)
   const nonEmpty = Object.entries(counts).filter(([, count]) => count > 0)
 
   if (nonEmpty.length > 0) {
@@ -203,11 +223,16 @@ export async function assertDatabaseClean(): Promise<void> {
   }
 }
 
+export async function resetAndAssertDatabaseClean(prisma: PrismaClient): Promise<void> {
+  await resetDatabaseWithPrisma(prisma)
+  await assertDatabaseCleanWithPrisma(prisma)
+}
+
 /**
  * Push the Prisma schema to the test database with retry logic.
  * Retries up to 3 times with exponential backoff for transient failures.
  */
-export async function pushSchema(maxRetries = 3): Promise<void> {
+async function pushSchemaInternal(maxRetries: number): Promise<void> {
   let lastError: unknown
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -236,9 +261,25 @@ export async function pushSchema(maxRetries = 3): Promise<void> {
       `Connection: ${TEST_DATABASE_URL}\n` +
       `Troubleshooting:\n` +
       `  1. Is the test database container running? Run: docker ps | grep hr-dashboard-test-db\n` +
-      `  2. Start it with: npm run test:db:up\n` +
+      `  2. Start it with: bun run test:db:up\n` +
       `Original error: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
   )
+}
+
+export async function pushSchema(
+  maxRetries = 3,
+  options?: { force?: boolean },
+): Promise<void> {
+  const force = options?.force ?? false
+
+  if (force || schemaPushPromise === null) {
+    schemaPushPromise = pushSchemaInternal(maxRetries).catch((error) => {
+      schemaPushPromise = null
+      throw error
+    })
+  }
+
+  await schemaPushPromise
 }
 
 /**
@@ -258,7 +299,7 @@ export async function isDatabaseReady(): Promise<boolean> {
  * Diagnose why the test database is unreachable.
  * Checks Docker, container state, and port availability.
  */
-function diagnoseDatabaseFailure(): string {
+export function diagnoseDatabaseFailure(): string {
   const lines: string[] = [
     `Test database not reachable at: ${TEST_DATABASE_URL}`,
     "",
@@ -286,16 +327,32 @@ function diagnoseDatabaseFailure(): string {
     } else {
       lines.push(
         `  [FAIL] Container hr-dashboard-test-db exists but status is: ${status}`,
-        "         Run: npm run test:db:up",
+        "         Run: bun run test:db:up",
       )
       return lines.join("\n")
     }
   } catch {
     lines.push(
       "  [FAIL] Container hr-dashboard-test-db not found.",
-      "         Run: npm run test:db:up",
+      "         Run: bun run test:db:up",
     )
     return lines.join("\n")
+  }
+
+  try {
+    const health = execSync(
+      "docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' hr-dashboard-test-db 2>/dev/null",
+      { stdio: "pipe", encoding: "utf-8" },
+    ).trim()
+    if (health === "healthy") {
+      lines.push("  [OK]   Container health check reports healthy")
+    } else if (health === "no-healthcheck") {
+      lines.push("  [WARN] Container has no health check configured")
+    } else {
+      lines.push(`  [WARN] Container health check reports: ${health}`)
+    }
+  } catch {
+    lines.push("  [WARN] Could not inspect container health")
   }
 
   try {
@@ -314,6 +371,15 @@ function diagnoseDatabaseFailure(): string {
     "check the container logs: docker logs hr-dashboard-test-db",
   )
   return lines.join("\n")
+}
+
+function tryStartTestDatabase(): boolean {
+  try {
+    execSync("bun run test:db:up", { stdio: "pipe" })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -337,6 +403,31 @@ export async function waitForDatabase(
   throw new Error(
     `Database not ready after ${timeoutMs}ms.\n\n${diagnosis}`,
   )
+}
+
+export async function ensureDatabaseReady(options?: {
+  timeoutMs?: number
+  intervalMs?: number
+  autoStart?: boolean
+  autoStartTimeoutMs?: number
+}): Promise<void> {
+  const {
+    timeoutMs = 30000,
+    intervalMs = 500,
+    autoStart = false,
+    autoStartTimeoutMs = 50000,
+  } = options ?? {}
+
+  try {
+    await waitForDatabase(timeoutMs, intervalMs)
+    return
+  } catch (initialError) {
+    if (!autoStart || !tryStartTestDatabase()) {
+      throw initialError
+    }
+  }
+
+  await waitForDatabase(autoStartTimeoutMs, intervalMs)
 }
 
 // Export the URL for external use

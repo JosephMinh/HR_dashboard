@@ -20,23 +20,41 @@
  *    - Always pass unique identifiers via the prefix parameter
  *
  * 4. SERIALIZATION POLICY:
- *    - Integration suites: run in parallel by default (each gets a fresh DB)
- *    - E2E suites: run serially (shared browser, shared server)
- *    - Suites needing shared mutable state: mark with { sequential: true } in describe
+ *    - Integration suites: single worker, shared DB, reset before each test
+ *    - E2E suites: fully parallel by default, shared seeded baseline, per-worker auth storage
+ *    - Suites needing shared mutable state: mark with serial mode explicitly
  */
-
-import { randomBytes } from "node:crypto"
 
 let counter = 0
 
+function sanitizeFixtureSegment(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32) || "test"
+}
+
+function getFixtureRunScope(): string {
+  return sanitizeFixtureSegment(
+    process.env.FIXTURE_RUN_SCOPE ??
+      process.env.VITEST_POOL_ID ??
+      process.env.TEST_WORKER_INDEX ??
+      `pid-${process.pid}`,
+  )
+}
+
+function nextFixtureToken(): string {
+  counter += 1
+  return `${getFixtureRunScope()}-${counter.toString(36).padStart(4, "0")}`
+}
+
 /**
  * Generate a short unique ID safe for use as email prefixes, entity names, etc.
- * Combines a monotonic counter with random bytes for collision resistance.
+ * Uses a worker/process-scoped monotonic token for deterministic uniqueness.
  */
 export function uniqueId(prefix = "test"): string {
-  counter++
-  const rand = randomBytes(4).toString("hex")
-  return `${prefix}-${counter}-${rand}`
+  return `${sanitizeFixtureSegment(prefix)}-${nextFixtureToken()}`
 }
 
 /**
@@ -52,7 +70,7 @@ export function uniqueEmail(prefix = "user"): string {
  */
 export function uniqueImportKey(sheet = "Test", row?: number): string {
   const r = row ?? counter + 1
-  return `${sheet}:${r}:${randomBytes(4).toString("hex")}`
+  return `${sheet}:${r}:${nextFixtureToken()}`
 }
 
 /**

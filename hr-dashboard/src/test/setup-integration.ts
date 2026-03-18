@@ -11,7 +11,7 @@ import {
   disconnectTestPrisma,
   resetDatabase,
   pushSchema,
-  waitForDatabase,
+  ensureDatabaseReady,
   assertDatabaseClean,
 } from "./test-db"
 import {
@@ -89,9 +89,9 @@ export function setupIntegrationTests(options?: {
 
   beforeAll(async () => {
     // Wait for database to be ready (with diagnostic errors on failure)
-    await waitForDatabase()
+    await ensureDatabaseReady()
 
-    // Push schema if needed (idempotent, with retry)
+    // Push schema once per process (idempotent, with retry)
     await pushSchema()
 
     // Reset database if requested
