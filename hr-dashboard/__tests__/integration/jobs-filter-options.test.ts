@@ -52,70 +52,84 @@ describe("Integration: GET /api/jobs/filter-options", () => {
       location: "   ",
       recruiterOwner: " ",
       functionalPriority: "3",
-      corporatePriority: "",
+      corporatePriority: "Horizon 2",
       function: "Talent",
       level: "L6",
       horizon: "2027",
       asset: "Growth",
     })
 
+    await factories.createJob({
+      title: "Operations Analyst",
+      department: "Operations",
+      employeeType: "Full-Time",
+      location: null,
+      recruiterOwner: "",
+      functionalPriority: null,
+      corporatePriority: "",
+      function: "Operations",
+      level: "L3",
+      horizon: "2028",
+      asset: null,
+    })
+
     const {
       GET,
-      JOB_FILTER_MISSING_LABEL,
+      JOB_FILTER_MISSING_VALUE,
     } = await import("@/app/api/jobs/filter-options/route")
     const response = await GET()
 
     expect(response.status).toBe(200)
     const data = await response.json()
 
-    expect(data.meta).toEqual({
-      missing: {
-        label: JOB_FILTER_MISSING_LABEL,
-        placement: "last",
-      },
-    })
-    expect(data.filters.department).toEqual([
+    expect(data.missingValue).toBe(JOB_FILTER_MISSING_VALUE)
+    expect(data.options.department).toEqual([
       { value: "Design", label: "Design", isMissing: false },
       { value: "Engineering", label: "Engineering", isMissing: false },
+      { value: "Operations", label: "Operations", isMissing: false },
     ])
-    expect(data.filters.location).toEqual([
+    expect(data.options.location).toEqual([
       { value: "Remote", label: "Remote", isMissing: false },
-      { value: null, label: JOB_FILTER_MISSING_LABEL, isMissing: true },
+      { value: JOB_FILTER_MISSING_VALUE, label: "Missing", isMissing: true },
     ])
-    expect(data.filters.recruiterOwner).toEqual([
+    expect(data.options.recruiterOwner).toEqual([
       { value: "Alice", label: "Alice", isMissing: false },
       { value: "Bob", label: "Bob", isMissing: false },
-      { value: null, label: JOB_FILTER_MISSING_LABEL, isMissing: true },
+      { value: JOB_FILTER_MISSING_VALUE, label: "Missing", isMissing: true },
     ])
-    expect(data.filters.functionalPriority).toEqual([
+    expect(data.options.functionalPriority).toEqual([
       { value: "1", label: "1", isMissing: false },
       { value: "3", label: "3", isMissing: false },
-      { value: null, label: JOB_FILTER_MISSING_LABEL, isMissing: true },
+      { value: JOB_FILTER_MISSING_VALUE, label: "Missing", isMissing: true },
     ])
-    expect(data.filters.corporatePriority).toEqual([
+    expect(data.options.corporatePriority).toEqual([
+      { value: "Horizon 2", label: "Horizon 2", isMissing: false },
       { value: "IPO", label: "IPO", isMissing: false },
       { value: "Program", label: "Program", isMissing: false },
-      { value: null, label: JOB_FILTER_MISSING_LABEL, isMissing: true },
+      { value: JOB_FILTER_MISSING_VALUE, label: "Missing", isMissing: true },
     ])
-    expect(data.filters.function).toEqual([
+    expect(data.options.function).toEqual([
       { value: "Design", label: "Design", isMissing: false },
       { value: "Engineering", label: "Engineering", isMissing: false },
+      { value: "Operations", label: "Operations", isMissing: false },
       { value: "Talent", label: "Talent", isMissing: false },
     ])
-    expect(data.filters.level).toEqual([
+    expect(data.options.level).toEqual([
+      { value: "L3", label: "L3", isMissing: false },
       { value: "L4", label: "L4", isMissing: false },
       { value: "L5", label: "L5", isMissing: false },
       { value: "L6", label: "L6", isMissing: false },
     ])
-    expect(data.filters.horizon).toEqual([
+    expect(data.options.horizon).toEqual([
       { value: "2026", label: "2026", isMissing: false },
       { value: "2027", label: "2027", isMissing: false },
+      { value: "2028", label: "2028", isMissing: false },
       { value: "Beyond 2026", label: "Beyond 2026", isMissing: false },
     ])
-    expect(data.filters.asset).toEqual([
+    expect(data.options.asset).toEqual([
       { value: "Core", label: "Core", isMissing: false },
       { value: "Growth", label: "Growth", isMissing: false },
-      { value: null, label: JOB_FILTER_MISSING_LABEL, isMissing: true },
+      { value: JOB_FILTER_MISSING_VALUE, label: "Missing", isMissing: true },
     ])
   })
 })

@@ -80,6 +80,193 @@ describe("Integration: GET /api/jobs", () => {
     expect(data.jobs[0].activeCandidateCount).toBe(1)
   })
 
+  it("filters correctly by location", async () => {
+    const remoteJob = await factories.createJob({
+      title: "Remote Role",
+      department: "Finance",
+      status: "OPEN",
+      location: "Remote",
+    })
+    await factories.createJob({
+      title: "Austin Role",
+      department: "Finance",
+      status: "OPEN",
+      location: "Austin",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request("http://localhost/api/jobs?location=Remote") as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+
+    expect(data.total).toBe(1)
+    expect(data.jobs).toHaveLength(1)
+    expect(data.jobs[0].id).toBe(remoteJob.id)
+  })
+
+  it("filters correctly by recruiterOwner", async () => {
+    const recruiterJob = await factories.createJob({
+      title: "Recruiter Owned Role",
+      department: "Finance",
+      status: "OPEN",
+      recruiterOwner: "Casey Recruiter",
+    })
+    await factories.createJob({
+      title: "Different Recruiter Role",
+      department: "Finance",
+      status: "OPEN",
+      recruiterOwner: "Jordan Recruiter",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?recruiterOwner=Casey%20Recruiter",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+
+    expect(data.total).toBe(1)
+    expect(data.jobs).toHaveLength(1)
+    expect(data.jobs[0].id).toBe(recruiterJob.id)
+  })
+
+  it("filters correctly by functionalPriority", async () => {
+    const priorityJob = await factories.createJob({
+      title: "Priority One Role",
+      department: "Finance",
+      status: "OPEN",
+      functionalPriority: "Priority 1",
+    })
+    await factories.createJob({
+      title: "Priority Two Role",
+      department: "Finance",
+      status: "OPEN",
+      functionalPriority: "Priority 2",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?functionalPriority=Priority%201",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+
+    expect(data.total).toBe(1)
+    expect(data.jobs).toHaveLength(1)
+    expect(data.jobs[0].id).toBe(priorityJob.id)
+  })
+
+  it("filters correctly by corporatePriority raw values", async () => {
+    const horizonJob = await factories.createJob({
+      title: "Horizon Role",
+      department: "Finance",
+      status: "OPEN",
+      corporatePriority: "Horizon 2",
+    })
+    await factories.createJob({
+      title: "IPO Role",
+      department: "Finance",
+      status: "OPEN",
+      corporatePriority: "IPO",
+    })
+    await factories.createJob({
+      title: "Program Role",
+      department: "Finance",
+      status: "OPEN",
+      corporatePriority: "Program",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request("http://localhost/api/jobs?corporatePriority=Horizon%202") as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+
+    expect(data.total).toBe(1)
+    expect(data.jobs).toHaveLength(1)
+    expect(data.jobs[0].id).toBe(horizonJob.id)
+  })
+
+  it("supports the missing-value token for nullable job metadata filters", async () => {
+    const nullLocationJob = await factories.createJob({
+      title: "Null Location Role",
+      department: "Operations",
+      status: "OPEN",
+      location: null,
+    })
+    const emptyLocationJob = await factories.createJob({
+      title: "Empty Location Role",
+      department: "Operations",
+      status: "OPEN",
+      location: "",
+    })
+    await factories.createJob({
+      title: "Explicit Location Role",
+      department: "Operations",
+      status: "OPEN",
+      location: "Austin",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request("http://localhost/api/jobs?location=__MISSING__") as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    const ids = data.jobs.map((job: { id: string }) => job.id)
+
+    expect(data.total).toBe(2)
+    expect(ids).toContain(nullLocationJob.id)
+    expect(ids).toContain(emptyLocationJob.id)
+  })
+
+  it("preserves existing filters when new nullable filters are present", async () => {
+    const matchingJob = await factories.createJob({
+      title: "Engineering Remote Role",
+      department: "Engineering",
+      status: "OPEN",
+      location: "Remote",
+    })
+    await factories.createJob({
+      title: "Engineering Onsite Role",
+      department: "Engineering",
+      status: "OPEN",
+      location: "Austin",
+    })
+    await factories.createJob({
+      title: "Sales Remote Role",
+      department: "Sales",
+      status: "OPEN",
+      location: "Remote",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?department=Engineering&location=Remote&status=OPEN",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+
+    expect(data.total).toBe(1)
+    expect(data.jobs).toHaveLength(1)
+    expect(data.jobs[0].id).toBe(matchingJob.id)
+  })
+
   it("sorts by openedAt when requested", async () => {
     const prisma = getTestPrisma()
     const older = await factories.createJob({
