@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { JOB_STATUS, PIPELINE_HEALTH } from '@/lib/status-config'
+import { JOB_STATUS, JOB_PRIORITY, PIPELINE_HEALTH } from '@/lib/status-config'
 import { cn } from '@/lib/utils'
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useJobsQuery } from '@/hooks/queries'
@@ -42,7 +42,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   // Filter state from URL params
   const status = searchParams.get('status') || ''
   const pipelineHealth = searchParams.get('pipelineHealth') || ''
-  const critical = searchParams.get('critical') || ''
+  const priority = searchParams.get('priority') || ''
   const search = searchParams.get('search') || ''
   const sort = searchParams.get('sort') || 'updatedAt'
   const order = (searchParams.get('order') || 'desc') as 'asc' | 'desc'
@@ -53,7 +53,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useJobsQuery({
     status: status || undefined,
     pipelineHealth: pipelineHealth || undefined,
-    critical: critical || undefined,
+    priority: priority || undefined,
     search: search || undefined,
     sort,
     order,
@@ -114,7 +114,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
     router.push('/jobs')
   }
 
-  const hasFilters = status || pipelineHealth || critical || search.trim()
+  const hasFilters = status || pipelineHealth || priority || search.trim()
 
   // Calculate display range for pagination info
   const startIndex = (page - 1) * ITEMS_PER_PAGE
@@ -151,6 +151,22 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
             </SelectContent>
           </Select>
           <Select
+            value={priority || 'ALL'}
+            onValueChange={(value) => updateParams({ priority: value === 'ALL' ? '' : value })}
+          >
+            <SelectTrigger className="w-32" aria-label="Filter by priority">
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Jobs</SelectItem>
+              {Object.entries(JOB_PRIORITY).map(([key, config]) => (
+                <SelectItem key={key} value={key}>
+                  {config.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
             value={pipelineHealth}
             onValueChange={(value) => updateParams({ pipelineHealth: value })}
           >
@@ -164,19 +180,6 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                   {config.label}
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={critical}
-            onValueChange={(value) => updateParams({ critical: value })}
-          >
-            <SelectTrigger className="w-32" aria-label="Filter by risk level">
-              <SelectValue placeholder="Risk" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All Jobs</SelectItem>
-              <SelectItem value="true">Critical Only</SelectItem>
-              <SelectItem value="false">Non-Critical</SelectItem>
             </SelectContent>
           </Select>
         </div>

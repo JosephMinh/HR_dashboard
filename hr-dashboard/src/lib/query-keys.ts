@@ -13,7 +13,7 @@ export interface JobsFilters {
   status?: string
   department?: string | string[]
   pipelineHealth?: string
-  critical?: string
+  priority?: string
   horizon?: string
   search?: string
   sort?: string

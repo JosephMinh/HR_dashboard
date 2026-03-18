@@ -69,7 +69,7 @@ export function useJobsQuery(filters?: JobsFilters) {
           ? filters.department.join(',')
           : filters?.department,
         pipelineHealth: filters?.pipelineHealth,
-        critical: filters?.critical,
+        priority: filters?.priority,
         search: filters?.search,
         sort: filters?.sort,
         order: filters?.order,

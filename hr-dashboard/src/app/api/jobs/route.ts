@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
   const departmentParam = searchParams.get('department')
   const pipelineHealthParam = searchParams.get('pipelineHealth')
   const criticalParam = searchParams.get('critical')
+  const priorityParam = searchParams.get('priority')
   // WFP filter parameters
   const employeeTypeParam = searchParams.get('employeeType')
   const functionParam = searchParams.get('function')
@@ -138,6 +139,17 @@ export async function GET(request: NextRequest) {
 
   if (criticalParam === 'true') {
     where.isCritical = true
+  }
+
+  if (priorityParam) {
+    const priorities = priorityParam.split(',').filter(p =>
+      Object.values(JobPriority).includes(p as JobPriority)
+    ) as JobPriority[]
+    if (priorities.length === 1) {
+      where.priority = priorities[0]
+    } else if (priorities.length > 1) {
+      where.priority = { in: priorities }
+    }
   }
 
   // WFP filters
