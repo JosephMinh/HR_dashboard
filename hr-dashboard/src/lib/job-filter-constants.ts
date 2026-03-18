@@ -253,10 +253,13 @@ export function sortJobFilterSelectionValues(
   missingValue: string = JOB_FILTER_MISSING_VALUE,
 ): string[] {
   const optionOrder = new Map(options.map((option, index) => [option.value, index]))
+  const normalizedValues = [...new Set(
+    values
+      .map((value) => value.trim())
+      .filter(Boolean),
+  )]
 
-  return [...new Set(values)]
-    .map((value) => value.trim())
-    .filter(Boolean)
+  return normalizedValues
     .sort((left, right) => {
       const leftIsMissing = left === missingValue
       const rightIsMissing = right === missingValue

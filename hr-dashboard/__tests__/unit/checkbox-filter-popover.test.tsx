@@ -172,6 +172,25 @@ describe('CheckboxFilterPopover search', () => {
     expect(screen.getByText('San Francisco')).toBeInTheDocument()
     expect(screen.queryByText('New York')).not.toBeInTheDocument()
   })
+
+  it('matches the visible "Not Set" label when searching missing values', () => {
+    render(
+      <CheckboxFilterPopover
+        options={locationOptions}
+        selected={[]}
+        onChange={() => {}}
+        triggerLabel="All Locations"
+        ariaLabel="Filter by location"
+        enableSearch
+      />,
+    )
+
+    const searchInput = screen.getByLabelText('Search filter options')
+    fireEvent.change(searchInput, { target: { value: 'not set' } })
+
+    expect(screen.getByText('Not Set')).toBeInTheDocument()
+    expect(screen.queryByText('Remote')).not.toBeInTheDocument()
+  })
 })
 
 describe('CheckboxFilterPopover trigger summary', () => {

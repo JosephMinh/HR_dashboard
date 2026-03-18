@@ -54,11 +54,16 @@ export function CheckboxFilterPopover({
     if (!enableSearch || !searchTerm.trim()) return allOptions
     const needle = searchTerm.trim().toLowerCase()
     return allOptions.filter(
-      (opt) =>
-        opt.label.toLowerCase().includes(needle) ||
-        selected.includes(opt.value),
+      (opt) => {
+        const visibleLabel = getOptionLabel(opt).toLowerCase()
+        return (
+          visibleLabel.includes(needle) ||
+          opt.label.toLowerCase().includes(needle) ||
+          selected.includes(opt.value)
+        )
+      },
     )
-  }, [allOptions, enableSearch, searchTerm, selected])
+  }, [allOptions, enableSearch, getOptionLabel, searchTerm, selected])
 
   const handleToggle = React.useCallback(
     (value: string) => {
