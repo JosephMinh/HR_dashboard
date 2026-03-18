@@ -136,7 +136,7 @@ bun run test:integration:coverage   # Run with coverage
 | Coverage output | `coverage/integration/coverage-summary.json` |
 | Retries (CI) | 2 · (local) 1 |
 
-Tests run sequentially to prevent concurrent database lock conflicts (TRUNCATE acquires an AccessExclusiveLock).
+Tests run in a single worker so suites share a predictable test database lifecycle and avoid cross-file state collisions while the harness resets shared tables between tests.
 
 ### Coverage Gates (per `vitest.config.integration.ts`)
 
@@ -568,6 +568,12 @@ cp .env.example .env.test
 | `PLAYWRIGHT_REUSE_SERVER` | `""` | Set to `1` to skip starting a dev server |
 | `PLAYWRIGHT_REPORT_DIR` | `test-results/playwright` | Custom report directory |
 
+E2E execution policy:
+- Playwright is fully parallel by default.
+- The suite relies on one shared seeded database baseline plus per-test data creation where needed.
+- Auth storage is isolated per worker so parallel workers do not overwrite each other's cached session files.
+- Suites that intentionally mutate shared global state must opt into serial mode with `test.describe.configure({ mode: "serial" })`.
+
 ### Auth
 
 | Variable | Default | Purpose |
@@ -614,7 +620,8 @@ Error: The table `public.User` does not exist
 ```
 Error: deadlock detected
 ```
-→ An earlier test likely left a transaction open. Tests run sequentially but a crash can leave an open connection. Restart the test run; the harness truncates tables via `TRUNCATE ... CASCADE` which acquires AccessExclusiveLock.
+→ An earlier test likely left a transaction open or is still holding work on the shared test pool.
+→ Restart the run first. The current harness resets tables with ordered `deleteMany()` calls and keeps integration on a single worker so lock contention should be rare.
 
 ### Unit Tests: `vi.mock` hoisting conflict with `setupTestAuth`
 
@@ -637,7 +644,7 @@ Error: Page crashed
 
 ### E2E Tests: Auth fixtures not working
 
-→ Global setup (`__tests__/e2e/global-setup.ts`) seeds test users and pushes the schema. If it fails, the pre-authenticated fixtures will have no valid session.
+→ Global setup (`__tests__/e2e/global-setup.ts`) now shares the same database readiness and schema-push helpers as integration tests before seeding test users. If it fails, the pre-authenticated fixtures will have no valid session.
 → Check: is the test DB reachable? Is `DATABASE_URL_TEST` correct in `.env.test`?
 
 ### Coverage Guard: All files show as "missing"

@@ -59,10 +59,24 @@ function getOriginStorageSlug(baseUrl: string): string {
   return origin.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase()
 }
 
-function getStoragePath(role: UserRole, baseUrl: string): string {
+function sanitizeStorageNamespace(namespace: string): string {
+  return namespace
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+}
+
+function getStoragePath(
+  role: UserRole,
+  baseUrl: string,
+  storageNamespace?: string,
+): string {
+  const namespaceSuffix = storageNamespace
+    ? `-${sanitizeStorageNamespace(storageNamespace)}`
+    : ""
   return path.join(
     AUTH_STORAGE_DIR,
-    `${role.toLowerCase()}-${getOriginStorageSlug(baseUrl)}-storage.json`,
+    `${role.toLowerCase()}-${getOriginStorageSlug(baseUrl)}${namespaceSuffix}-storage.json`,
   )
 }
 
@@ -78,8 +92,13 @@ function ensureAuthStorageDir(): void {
 /**
  * Check if authenticated storage exists and is recent
  */
-function hasValidStorage(role: UserRole, baseUrl: string, maxAgeMs = 3600000): boolean {
-  const storagePath = getStoragePath(role, baseUrl)
+function hasValidStorage(
+  role: UserRole,
+  baseUrl: string,
+  maxAgeMs = 3600000,
+  storageNamespace?: string,
+): boolean {
+  const storagePath = getStoragePath(role, baseUrl, storageNamespace)
   if (!fs.existsSync(storagePath)) {
     return false
   }
@@ -99,43 +118,70 @@ export async function performLogin(
 ): Promise<void> {
   console.log(`[AUTH] Logging in as ${user.role}: ${user.email}`)
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    // Navigate to login page
-    await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded" })
-    await page.waitForLoadState("networkidle")
+  const maxAttempts = 4
+  const totalRetryBudgetMs = 25000
+  const startedAt = Date.now()
 
-    const emailInput = page.getByLabel("Email")
-    const passwordInput = page.getByLabel("Password")
-    const submitButton = page.getByRole("button", { name: /^sign in$/i })
-
-    await emailInput.waitFor({ state: "visible" })
-    await passwordInput.waitFor({ state: "visible" })
-
-    // Let the client form hydrate before submitting. If we click too early,
-    // the browser performs a native GET submit to /login? instead of the
-    // React onSubmit handler calling next-auth signIn().
-    await emailInput.fill(user.email)
-    await passwordInput.fill(user.password)
-    await emailInput.blur()
-    await passwordInput.blur()
-    await submitButton.waitFor({ state: "visible" })
-
-    await page.waitForFunction(
-      ([email, password]) => {
-        const emailField = document.querySelector<HTMLInputElement>("#email")
-        const passwordField = document.querySelector<HTMLInputElement>("#password")
-        return emailField?.value === email && passwordField?.value === password
-      },
-      [user.email, user.password],
-    )
-
-    // Submit form
-    await submitButton.click()
-
-    // Wait for redirect to dashboard
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      const remainingBudgetMs = totalRetryBudgetMs - (Date.now() - startedAt)
+      if (remainingBudgetMs <= 0) {
+        break
+      }
+
+      // Navigate to login page. The dev server can briefly refuse connections
+      // while booting, so treat navigation readiness as retryable.
+      await page.goto(`${baseUrl}/login`, {
+        waitUntil: "domcontentloaded",
+        timeout: Math.min(10000, remainingBudgetMs),
+      })
+
+      // The credentials form is client-driven. Give the page a short chance to
+      // settle so the next-auth signIn() handler is wired before we submit.
+      await page.waitForLoadState("networkidle", {
+        timeout: Math.min(5000, remainingBudgetMs),
+      }).catch(() => undefined)
+
+      const postLoadBudgetMs = totalRetryBudgetMs - (Date.now() - startedAt)
+      if (postLoadBudgetMs <= 0) {
+        break
+      }
+
+      const emailInput = page.getByLabel("Email")
+      const passwordInput = page.getByLabel("Password")
+      const submitButton = page.getByRole("button", { name: /^sign in$/i })
+
+      const fieldTimeoutMs = Math.min(8000, postLoadBudgetMs)
+      await emailInput.waitFor({ state: "visible", timeout: fieldTimeoutMs })
+      await passwordInput.waitFor({ state: "visible", timeout: fieldTimeoutMs })
+
+      // Let the client form hydrate before submitting. If we click too early,
+      // the browser performs a native GET submit to /login? instead of the
+      // React onSubmit handler calling next-auth signIn().
+      await emailInput.fill(user.email)
+      await passwordInput.fill(user.password)
+      await emailInput.blur()
+      await passwordInput.blur()
+      await submitButton.waitFor({ state: "visible" })
+
+      await page.waitForFunction(
+        ([email, password]) => {
+          const emailField = document.querySelector<HTMLInputElement>("#email")
+          const passwordField = document.querySelector<HTMLInputElement>("#password")
+          return emailField?.value === email && passwordField?.value === password
+        },
+        [user.email, user.password],
+      )
+
+      await submitButton.click()
+
+      const submitBudgetMs = totalRetryBudgetMs - (Date.now() - startedAt)
+      if (submitBudgetMs <= 0) {
+        break
+      }
+
       await page.waitForURL((url) => !url.pathname.includes("/login"), {
-        timeout: 15000,
+        timeout: Math.min(12000, submitBudgetMs),
       })
       console.log(`[AUTH] Login successful for ${user.role}`)
       return
@@ -144,11 +190,12 @@ export async function performLogin(
       const hasError = await loginError.isVisible().catch(() => false)
       const errorText = hasError ? (await loginError.textContent())?.trim() : null
 
-      if (attempt < 2) {
+      const remainingBudgetMs = totalRetryBudgetMs - (Date.now() - startedAt)
+      if (attempt < maxAttempts && remainingBudgetMs > 0 && !page.isClosed()) {
         console.warn(
-          `[AUTH] Login attempt ${attempt} failed for ${user.email}${errorText ? `: ${errorText}` : ""}; retrying once...`,
+          `[AUTH] Login attempt ${attempt} failed for ${user.email}${errorText ? `: ${errorText}` : ""}; retrying...`,
         )
-        await page.waitForTimeout(500)
+        await page.waitForTimeout(Math.min(750, remainingBudgetMs))
         continue
       }
 
@@ -157,6 +204,10 @@ export async function performLogin(
       )
     }
   }
+
+  throw new Error(
+    `[AUTH] Login failed for ${user.email}: exhausted ${totalRetryBudgetMs}ms retry budget`,
+  )
 }
 
 /**
@@ -169,14 +220,18 @@ export async function getAuthenticatedContext(
   options?: {
     forceLogin?: boolean
     maxStorageAgeMs?: number
+    storageNamespace?: string
   },
 ): Promise<BrowserContext> {
   ensureAuthStorageDir()
-  const storagePath = getStoragePath(role, baseUrl)
+  const storagePath = getStoragePath(role, baseUrl, options?.storageNamespace)
   const user = TEST_USERS[role]
 
   // Check if we have valid cached storage
-  if (!options?.forceLogin && hasValidStorage(role, baseUrl, options?.maxStorageAgeMs)) {
+  if (
+    !options?.forceLogin &&
+    hasValidStorage(role, baseUrl, options?.maxStorageAgeMs, options?.storageNamespace)
+  ) {
     console.log(`[AUTH] Using cached storage for ${role}`)
     return browser.newContext({ storageState: storagePath })
   }
@@ -207,8 +262,13 @@ export async function createAuthenticatedPage(
   browser: Browser,
   role: UserRole,
   baseUrl: string,
+  options?: {
+    forceLogin?: boolean
+    maxStorageAgeMs?: number
+    storageNamespace?: string
+  },
 ): Promise<{ page: Page; context: BrowserContext }> {
-  const context = await getAuthenticatedContext(browser, role, baseUrl)
+  const context = await getAuthenticatedContext(browser, role, baseUrl, options)
   const page = await context.newPage()
   return { page, context }
 }
@@ -229,12 +289,18 @@ export function clearAuthStorage(): void {
 /**
  * Clear specific role's auth storage
  */
-export function clearRoleStorage(role: UserRole, baseUrl?: string): void {
+export function clearRoleStorage(
+  role: UserRole,
+  baseUrl?: string,
+  storageNamespace?: string,
+): void {
   if (baseUrl) {
-    const storagePath = getStoragePath(role, baseUrl)
+    const storagePath = getStoragePath(role, baseUrl, storageNamespace)
     if (fs.existsSync(storagePath)) {
       fs.unlinkSync(storagePath)
-      console.log(`[AUTH] Cleared storage for ${role} (${baseUrl})`)
+      console.log(
+        `[AUTH] Cleared storage for ${role} (${baseUrl}${storageNamespace ? `, ${storageNamespace}` : ""})`,
+      )
     }
     return
   }

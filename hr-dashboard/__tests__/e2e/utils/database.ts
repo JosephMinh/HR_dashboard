@@ -8,12 +8,15 @@
 import { PrismaClient } from "@/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { hash } from "bcryptjs"
+import {
+  assertDatabaseCleanWithPrisma,
+  resetDatabaseWithPrisma,
+} from "../../../src/test/test-db"
+import { getTestDatabaseUrl } from "../../../src/test/database"
 import { TEST_USERS, getTestPassword } from "./auth"
 
 // Use the test database URL
-const TEST_DATABASE_URL =
-  process.env.DATABASE_URL_TEST ??
-  "postgresql://postgres:postgres@localhost:5433/hr_dashboard_test"
+const TEST_DATABASE_URL = getTestDatabaseUrl()
 
 let e2ePrisma: PrismaClient | null = null
 
@@ -43,19 +46,8 @@ export async function disconnectE2EPrisma(): Promise<void> {
  */
 export async function resetE2EDatabase(): Promise<void> {
   const prisma = getE2EPrisma()
-
-  await prisma.$executeRawUnsafe(`
-    DO $$
-    DECLARE
-      r RECORD;
-    BEGIN
-      SET session_replication_role = 'replica';
-      FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename != '_prisma_migrations') LOOP
-        EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
-      END LOOP;
-      SET session_replication_role = 'origin';
-    END $$;
-  `)
+  await resetDatabaseWithPrisma(prisma)
+  await assertDatabaseCleanWithPrisma(prisma)
 }
 
 /**

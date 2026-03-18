@@ -56,8 +56,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   // Worker-scoped authenticated contexts
   adminContext: [
-    async ({ browser }, use) => {
-      const context = await getAuthenticatedContext(browser, "ADMIN", playwrightBaseUrl)
+    async ({ browser }, use, workerInfo) => {
+      const context = await getAuthenticatedContext(browser, "ADMIN", playwrightBaseUrl, {
+        storageNamespace: `worker-${workerInfo.parallelIndex}`,
+      })
       await use(context)
       await context.close()
     },
@@ -65,8 +67,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   recruiterContext: [
-    async ({ browser }, use) => {
-      const context = await getAuthenticatedContext(browser, "RECRUITER", playwrightBaseUrl)
+    async ({ browser }, use, workerInfo) => {
+      const context = await getAuthenticatedContext(browser, "RECRUITER", playwrightBaseUrl, {
+        storageNamespace: `worker-${workerInfo.parallelIndex}`,
+      })
       await use(context)
       await context.close()
     },
@@ -74,8 +78,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   viewerContext: [
-    async ({ browser }, use) => {
-      const context = await getAuthenticatedContext(browser, "VIEWER", playwrightBaseUrl)
+    async ({ browser }, use, workerInfo) => {
+      const context = await getAuthenticatedContext(browser, "VIEWER", playwrightBaseUrl, {
+        storageNamespace: `worker-${workerInfo.parallelIndex}`,
+      })
       await use(context)
       await context.close()
     },
