@@ -82,16 +82,13 @@ export default async function DashboardPage() {
           </Link>
 
           {/* Critical Jobs - Alert metric with urgency styling */}
-          <Link href="/jobs?critical=true" className="group block">
+          <Link href="/jobs?priority=CRITICAL&status=OPEN" className="group block">
             <Card className={`shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-focus-visible:ring-2 group-focus-visible:ring-ring ${stats.activeCriticalJobs > 0 ? 'ring-1 ring-destructive/30 bg-destructive/5 group-hover:ring-destructive/50' : 'group-hover:ring-1 group-hover:ring-primary/20'}`}>
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className={`text-sm font-medium ${stats.activeCriticalJobs > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                       Critical Jobs
-                    </p>
-                    <p className={`mt-2 text-3xl font-bold tracking-tight tabular-nums ${stats.activeCriticalJobs > 0 ? 'text-destructive' : ''}`}>
-                      {stats.activeCriticalJobs}
                     </p>
                     <p className={`mt-1 flex items-center gap-1 text-xs ${stats.activeCriticalJobs > 0 ? 'text-destructive/70' : 'text-muted-foreground'}`}>
                       <span>{stats.activeCriticalJobs > 0 ? 'Need attention' : 'All on track'}</span>
