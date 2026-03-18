@@ -27,34 +27,76 @@ interface StatusConfig {
   icon?: string // Lucide icon name for quick recognition
 }
 
+// Semantic status groups — used by dashboard queries, API routes, and import logic
+export const ACTIVE_RECRUITING_STATUSES = ['OPEN', 'OFFER', 'AGENCY'] as const
+export const ACTIVE_RECRUITING_STATUS_SET = new Set<string>(ACTIVE_RECRUITING_STATUSES)
+export const HIRED_STATUSES = ['HIRED', 'HIRED_CW'] as const
+export const HIRED_STATUS_SET = new Set<string>(HIRED_STATUSES)
+
 // Job Status - workflow states for job openings
 export const JOB_STATUS: Record<string, StatusConfig> = {
   OPEN: {
     label: 'Open',
     variant: 'default',
     color: 'green',
-    description: 'Actively hiring',
+    description: 'Actively recruiting',
     emphasis: 'prominent',
     intent: 'success',
     icon: 'CircleDot',
   },
-  CLOSED: {
-    label: 'Closed',
+  OFFER: {
+    label: 'Offer',
+    variant: 'default',
+    color: 'blue',
+    description: 'Offer extended',
+    emphasis: 'prominent',
+    intent: 'info',
+    icon: 'Send',
+  },
+  AGENCY: {
+    label: 'Agency',
+    variant: 'default',
+    color: 'purple',
+    description: 'Agency-sourced',
+    emphasis: 'standard',
+    intent: 'info',
+    icon: 'Building2',
+  },
+  HIRED: {
+    label: 'Hired',
     variant: 'secondary',
     color: 'gray',
-    description: 'Position filled or cancelled',
+    description: 'Position filled',
     emphasis: 'subtle',
     intent: 'neutral',
     icon: 'CheckCircle2',
   },
-  ON_HOLD: {
-    label: 'On Hold',
+  HIRED_CW: {
+    label: 'Hired (CW)',
+    variant: 'secondary',
+    color: 'gray',
+    description: 'Filled (contingent worker)',
+    emphasis: 'subtle',
+    intent: 'neutral',
+    icon: 'CheckCircle2',
+  },
+  NOT_STARTED: {
+    label: 'Not Started',
     variant: 'outline',
     color: 'amber',
-    description: 'Temporarily paused',
+    description: 'Future role, not yet recruiting',
     emphasis: 'standard',
     intent: 'warning',
-    icon: 'PauseCircle',
+    icon: 'Clock',
+  },
+  UNKNOWN: {
+    label: 'Unknown',
+    variant: 'secondary',
+    color: 'gray',
+    description: 'Status not set',
+    emphasis: 'subtle',
+    intent: 'neutral',
+    icon: 'HelpCircle',
   },
 }
 

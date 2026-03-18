@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { createZodFormOptions, useFormDirtyGuard, useFormFeedback, getSubmitLabel } from '@/hooks/forms'
-import { JOB_STATUS, JOB_PRIORITY, PIPELINE_HEALTH } from '@/lib/status-config'
+import { JOB_STATUS, JOB_PRIORITY, PIPELINE_HEALTH, ACTIVE_RECRUITING_STATUS_SET } from '@/lib/status-config'
 import {
   useCreateJobMutation,
   useUpdateJobMutation,
@@ -48,7 +48,7 @@ const jobFormSchema = z
     targetFillDate: z.string(),
   })
   .superRefine((value, context) => {
-    if (value.status === 'OPEN' && value.pipelineHealth.trim().length === 0) {
+    if (ACTIVE_RECRUITING_STATUS_SET.has(value.status) && value.pipelineHealth.trim().length === 0) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Pipeline health is required for open jobs',
@@ -179,8 +179,8 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
     },
     {
       label: 'Pipeline health',
-      complete: values.status !== 'OPEN' || values.pipelineHealth.trim().length > 0,
-      optional: values.status !== 'OPEN',
+      complete: !ACTIVE_RECRUITING_STATUS_SET.has(values.status) || values.pipelineHealth.trim().length > 0,
+      optional: !ACTIVE_RECRUITING_STATUS_SET.has(values.status),
     },
   ]
   const completedCount = completionItems.filter((item) => item.complete).length
@@ -490,8 +490,8 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
             validators={{
               onSubmit: ({ value, fieldApi }) => {
                 const status = fieldApi.form.getFieldValue('status')
-                if (status === 'OPEN' && !value) {
-                  return 'Pipeline health is required for open jobs'
+                if (ACTIVE_RECRUITING_STATUS_SET.has(status) && !value) {
+                  return 'Pipeline health is required for active recruiting jobs'
                 }
                 return undefined
               },
@@ -523,7 +523,7 @@ export function JobForm({ initialData, jobId, mode }: JobFormProps) {
                     </SelectContent>
                   </Select>
                   <p id="pipelineHealth-hint" className="text-xs text-muted-foreground">
-                    Required when the status is Open.
+                    Required for active recruiting statuses (Open, Offer, Agency).
                   </p>
                   {hasError && (
                     <p id="pipelineHealth-error" role="alert" className="text-xs text-destructive">

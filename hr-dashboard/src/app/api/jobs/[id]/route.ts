@@ -386,16 +386,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const nextPipelineHealth = hasOwn(data, 'pipelineHealth')
     ? data.pipelineHealth as PipelineHealth | null
     : existing.pipelineHealth
-  if (nextStatus === JobStatus.OPEN && nextPipelineHealth === null) {
+  const ACTIVE_STATUS_SET = new Set<JobStatus>([JobStatus.OPEN, JobStatus.OFFER, JobStatus.AGENCY])
+  if (ACTIVE_STATUS_SET.has(nextStatus) && nextPipelineHealth === null) {
     return NextResponse.json(
-      { error: 'Pipeline health is required for open jobs' },
+      { error: 'Pipeline health is required for active recruiting jobs' },
       { status: 400 },
     )
   }
 
   // Keep closedAt aligned with lifecycle transitions unless explicitly overridden.
+  const HIRED_SET = new Set<JobStatus>([JobStatus.HIRED, JobStatus.HIRED_CW])
   if (body.status !== undefined && body.closedAt === undefined) {
-    if (body.status === JobStatus.CLOSED) {
+    if (HIRED_SET.has(body.status)) {
       if (!existing.closedAt) {
         data.closedAt = new Date()
       }
@@ -407,15 +409,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const nextClosedAt = hasOwn(data, 'closedAt')
     ? data.closedAt as Date | null
     : existing.closedAt
-  if (nextStatus === JobStatus.CLOSED && nextClosedAt === null) {
+  if (HIRED_SET.has(nextStatus) && nextClosedAt === null) {
     return NextResponse.json(
-      { error: 'closedAt cannot be null when status is CLOSED' },
+      { error: 'closedAt cannot be null when status is a hired status' },
       { status: 400 },
     )
   }
-  if (nextStatus !== JobStatus.CLOSED && nextClosedAt !== null) {
+  if (!HIRED_SET.has(nextStatus) && nextClosedAt !== null) {
     return NextResponse.json(
-      { error: 'closedAt can only be set when status is CLOSED' },
+      { error: 'closedAt can only be set when status is a hired status' },
       { status: 400 },
     )
   }

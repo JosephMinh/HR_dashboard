@@ -107,38 +107,38 @@ describe("mapJobStatus", () => {
     expect(mapJobStatus("Open", sheet2026, 2)).toBe("OPEN")
   })
 
-  it("maps Offer -> OPEN", () => {
-    expect(mapJobStatus("Offer", sheet2026, 2)).toBe("OPEN")
+  it("maps Offer -> OFFER", () => {
+    expect(mapJobStatus("Offer", sheet2026, 2)).toBe("OFFER")
   })
 
-  it("maps Agency -> OPEN", () => {
-    expect(mapJobStatus("Agency", sheet2026, 2)).toBe("OPEN")
+  it("maps Agency -> AGENCY", () => {
+    expect(mapJobStatus("Agency", sheet2026, 2)).toBe("AGENCY")
   })
 
-  it("maps Hired -> CLOSED", () => {
-    expect(mapJobStatus("Hired", sheet2026, 2)).toBe("CLOSED")
+  it("maps Hired -> HIRED", () => {
+    expect(mapJobStatus("Hired", sheet2026, 2)).toBe("HIRED")
   })
 
-  it("maps 'Hired - CW' -> CLOSED", () => {
-    expect(mapJobStatus("Hired - CW", sheet2026, 2)).toBe("CLOSED")
+  it("maps 'Hired - CW' -> HIRED_CW", () => {
+    expect(mapJobStatus("Hired - CW", sheet2026, 2)).toBe("HIRED_CW")
   })
 
   it("handles case insensitivity", () => {
-    expect(mapJobStatus("HIRED", sheet2026, 2)).toBe("CLOSED")
+    expect(mapJobStatus("HIRED", sheet2026, 2)).toBe("HIRED")
     expect(mapJobStatus("open", sheet2026, 2)).toBe("OPEN")
   })
 
-  it("maps blank to ON_HOLD", () => {
-    expect(mapJobStatus(null, sheet2026, 2)).toBe("ON_HOLD")
-    expect(mapJobStatus("", sheet2026, 2)).toBe("ON_HOLD")
+  it("maps blank to UNKNOWN", () => {
+    expect(mapJobStatus(null, sheet2026, 2)).toBe("UNKNOWN")
+    expect(mapJobStatus("", sheet2026, 2)).toBe("UNKNOWN")
   })
 
-  it("forces ON_HOLD for Beyond 2026 sheet regardless of value", () => {
-    expect(mapJobStatus("Open", sheetBeyond, 2)).toBe("ON_HOLD")
-    expect(mapJobStatus("Hired", sheetBeyond, 2)).toBe("ON_HOLD")
+  it("forces NOT_STARTED for Beyond 2026 sheet regardless of value", () => {
+    expect(mapJobStatus("Open", sheetBeyond, 2)).toBe("NOT_STARTED")
+    expect(mapJobStatus("Hired", sheetBeyond, 2)).toBe("NOT_STARTED")
   })
 
-  it("maps unknown values to ON_HOLD with warning", () => {
+  it("maps unknown values to UNKNOWN with warning", () => {
     mapJobStatus("Something Weird", sheet2026, 5)
     const warns = getWarnings()
     expect(warns.length).toBe(1)
@@ -220,8 +220,8 @@ describe("mapIsTradeoff", () => {
 
 describe("computePipelineHealth", () => {
   it("returns null for non-OPEN jobs", () => {
-    expect(computePipelineHealth("CLOSED", new Date("2026-04-01"))).toBeNull()
-    expect(computePipelineHealth("ON_HOLD", new Date("2026-04-01"))).toBeNull()
+    expect(computePipelineHealth("HIRED", new Date("2026-04-01"))).toBeNull()
+    expect(computePipelineHealth("NOT_STARTED", new Date("2026-04-01"))).toBeNull()
   })
 
   it("returns ON_TRACK for OPEN with null date", () => {

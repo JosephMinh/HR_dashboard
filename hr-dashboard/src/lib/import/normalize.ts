@@ -69,10 +69,10 @@ export function sanitizeCollapse(value: string | null | undefined): string | nul
 
 const STATUS_MAP: Record<string, JobStatus> = {
   open: "OPEN",
-  offer: "OPEN",
-  agency: "OPEN",
-  hired: "CLOSED",
-  "hired - cw": "CLOSED",
+  offer: "OFFER",
+  agency: "AGENCY",
+  hired: "HIRED",
+  "hired - cw": "HIRED_CW",
 };
 
 /**
@@ -91,14 +91,14 @@ export function normalizeJobStatus(
   const warnings: string[] = [];
   const raw = sanitize(recruitingStatus);
 
-  // Beyond 2026 sheet: force ON_HOLD regardless of status
+  // Beyond 2026 sheet: force NOT_STARTED regardless of status
   if (sheet.includes("Beyond 2026")) {
-    return { value: "ON_HOLD", warnings };
+    return { value: "NOT_STARTED", warnings };
   }
 
-  // Blank on 2026 sheet → ON_HOLD
+  // Blank on 2026 sheet → UNKNOWN
   if (raw == null) {
-    return { value: "ON_HOLD", warnings };
+    return { value: "UNKNOWN", warnings };
   }
 
   const key = raw.toLowerCase();
@@ -108,9 +108,9 @@ export function normalizeJobStatus(
     return { value: mapped, warnings };
   }
 
-  // Unknown value — default to ON_HOLD and warn
-  warnings.push(`Unknown recruiting status "${raw}" on sheet "${sheet}" — defaulting to ON_HOLD`);
-  return { value: "ON_HOLD", warnings };
+  // Unknown value — default to UNKNOWN and warn
+  warnings.push(`Unknown recruiting status "${raw}" on sheet "${sheet}" — defaulting to UNKNOWN`);
+  return { value: "UNKNOWN", warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -191,12 +191,14 @@ export function computeIsTradeoff(tradeoffCell: string | null | undefined): bool
  * - null target date on an open job → ON_TRACK
  * - non-OPEN jobs → null
  */
+const ACTIVE_STATUSES = new Set<string>(["OPEN", "OFFER", "AGENCY"]);
+
 export function computePipelineHealth(
   targetFillDate: Date | null,
   status: JobStatus,
   asOfDate: Date = PIPELINE_HEALTH_AS_OF,
 ): PipelineHealth | null {
-  if (status !== "OPEN") {
+  if (!ACTIVE_STATUSES.has(status)) {
     return null;
   }
 

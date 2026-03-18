@@ -100,7 +100,7 @@ describe("Integration: GET/PATCH /api/jobs/[id]", () => {
     })
   })
 
-  it("rejects closedAt when status is not CLOSED", async () => {
+  it("rejects closedAt when status is not a hired status", async () => {
     const prisma = getTestPrisma()
     const job = await factories.createJob({
       title: "Product Manager",
@@ -125,7 +125,7 @@ describe("Integration: GET/PATCH /api/jobs/[id]", () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({
-      error: "closedAt can only be set when status is CLOSED",
+      error: "closedAt can only be set when status is a hired status",
     })
   })
 
@@ -145,14 +145,14 @@ describe("Integration: GET/PATCH /api/jobs/[id]", () => {
     const response = await PATCH(
       new Request(`http://localhost/api/jobs/${job.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "CLOSED" }),
+        body: JSON.stringify({ status: "HIRED" }),
       }) as never,
       { params: Promise.resolve({ id: job.id }) },
     )
 
     expect(response.status).toBe(200)
     const payload = await response.json()
-    expect(payload.status).toBe("CLOSED")
+    expect(payload.status).toBe("HIRED")
     expect(payload.closedAt).not.toBeNull()
 
     const updated = await prisma.job.findUnique({ where: { id: job.id } })

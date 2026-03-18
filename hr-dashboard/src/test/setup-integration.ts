@@ -175,7 +175,7 @@ export function createTestFactories() {
         location?: string | null
         hiringManager?: string | null
         recruiterOwner?: string | null
-        status?: "OPEN" | "CLOSED" | "ON_HOLD"
+        status?: "OPEN" | "OFFER" | "AGENCY" | "HIRED" | "HIRED_CW" | "NOT_STARTED" | "UNKNOWN"
         priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
         pipelineHealth?: "AHEAD" | "ON_TRACK" | "BEHIND" | null
         isCritical?: boolean

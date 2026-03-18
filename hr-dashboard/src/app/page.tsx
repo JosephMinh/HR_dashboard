@@ -40,7 +40,7 @@ export default async function DashboardPage() {
         {/* KPI Cards - Premium treatment with urgency hierarchy */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* Open Jobs - Primary metric */}
-          <Link href="/jobs?status=OPEN" className="group block">
+          <Link href="/jobs?status=OPEN,OFFER,AGENCY" className="group block">
             <Card className="shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-hover:ring-1 group-hover:ring-primary/20 group-focus-visible:ring-2 group-focus-visible:ring-ring">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -82,7 +82,7 @@ export default async function DashboardPage() {
           </Link>
 
           {/* Critical Jobs - Alert metric with urgency styling */}
-          <Link href="/jobs?priority=CRITICAL&status=OPEN" className="group block">
+          <Link href="/jobs?priority=CRITICAL&status=OPEN,OFFER,AGENCY" className="group block">
             <Card className={`shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-focus-visible:ring-2 group-focus-visible:ring-ring ${stats.activeCriticalJobs > 0 ? 'ring-1 ring-destructive/30 bg-destructive/5 group-hover:ring-destructive/50' : 'group-hover:ring-1 group-hover:ring-primary/20'}`}>
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -104,12 +104,12 @@ export default async function DashboardPage() {
           </Link>
 
           {/* Closed Jobs - Success metric */}
-          <Link href="/jobs?status=CLOSED" className="group block">
+          <Link href="/jobs?status=HIRED,HIRED_CW" className="group block">
             <Card className="shadow-premium-sm transition-all duration-150 group-hover:shadow-premium-md group-hover:ring-1 group-hover:ring-primary/20 group-focus-visible:ring-2 group-focus-visible:ring-ring">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Closed Jobs</p>
+                    <p className="text-sm font-medium text-muted-foreground">Hired</p>
                     <p className="mt-2 text-3xl font-bold tracking-tight tabular-nums">{stats.jobsClosed}</p>
                     <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                       <span>Successfully filled</span>

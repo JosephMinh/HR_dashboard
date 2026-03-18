@@ -75,24 +75,24 @@ describe("normalize.normalizeJobStatus", () => {
     expect(result.warnings).toHaveLength(0)
   })
 
-  it("maps Hired -> CLOSED", () => {
+  it("maps Hired -> HIRED", () => {
     const result = normalizeJobStatus("Hired", "WFP Details - 2026")
-    expect(result.value).toBe("CLOSED")
+    expect(result.value).toBe("HIRED")
   })
 
-  it("maps blank to ON_HOLD", () => {
+  it("maps blank to UNKNOWN", () => {
     const result = normalizeJobStatus(null, "WFP Details - 2026")
-    expect(result.value).toBe("ON_HOLD")
+    expect(result.value).toBe("UNKNOWN")
   })
 
-  it("forces ON_HOLD for Beyond 2026 sheet", () => {
+  it("forces NOT_STARTED for Beyond 2026 sheet", () => {
     const result = normalizeJobStatus("Open", "WFP Details - Beyond 2026")
-    expect(result.value).toBe("ON_HOLD")
+    expect(result.value).toBe("NOT_STARTED")
   })
 
-  it("unknown status returns ON_HOLD with warning", () => {
+  it("unknown status returns UNKNOWN with warning", () => {
     const result = normalizeJobStatus("Transferred", "WFP Details - 2026")
-    expect(result.value).toBe("ON_HOLD")
+    expect(result.value).toBe("UNKNOWN")
     expect(result.warnings.length).toBe(1)
     expect(result.warnings[0]).toContain("Unknown")
   })
@@ -172,8 +172,8 @@ describe("normalize.computePipelineHealth", () => {
   const asOf = PIPELINE_HEALTH_AS_OF // 2026-03-17
 
   it("returns null for non-OPEN status", () => {
-    expect(computePipelineHealth(new Date("2026-04-01"), "CLOSED", asOf)).toBeNull()
-    expect(computePipelineHealth(new Date("2026-04-01"), "ON_HOLD", asOf)).toBeNull()
+    expect(computePipelineHealth(new Date("2026-04-01"), "HIRED", asOf)).toBeNull()
+    expect(computePipelineHealth(new Date("2026-04-01"), "NOT_STARTED", asOf)).toBeNull()
   })
 
   it("returns ON_TRACK for OPEN with null target date", () => {

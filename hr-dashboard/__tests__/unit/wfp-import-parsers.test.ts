@@ -56,14 +56,17 @@ describe("parseWfpDetailsSheet — 2026", () => {
   })
 
   it("has correct status breakdown", () => {
-    const statusCounts = { OPEN: 0, CLOSED: 0, ON_HOLD: 0 }
+    const statusCounts: Record<string, number> = {}
     for (const job of result.jobs) {
-      statusCounts[job.status]++
+      statusCounts[job.status] = (statusCounts[job.status] ?? 0) + 1
     }
-    expect(statusCounts.OPEN).toBe(30)
-    expect(statusCounts.CLOSED).toBe(205)
-    // Remaining are ON_HOLD
-    expect(statusCounts.ON_HOLD).toBe(343 - 30 - 205)
+    // open=27, offer=3, agency=0 from the spreadsheet data
+    const activeCount = (statusCounts["OPEN"] ?? 0) + (statusCounts["OFFER"] ?? 0) + (statusCounts["AGENCY"] ?? 0)
+    expect(activeCount).toBe(30)
+    const hiredCount = (statusCounts["HIRED"] ?? 0) + (statusCounts["HIRED_CW"] ?? 0)
+    expect(hiredCount).toBe(205)
+    // Remaining are UNKNOWN (blank status)
+    expect(statusCounts["UNKNOWN"] ?? 0).toBe(343 - 30 - 205)
   })
 
   it("sets horizon to '2026' for all jobs", () => {
@@ -147,9 +150,9 @@ describe("parseWfpDetailsSheet — Beyond 2026", () => {
     expect(result.candidates.length).toBe(0)
   })
 
-  it("all jobs are ON_HOLD (Beyond 2026 rule)", () => {
+  it("all jobs are NOT_STARTED (Beyond 2026 rule)", () => {
     for (const job of result.jobs) {
-      expect(job.status).toBe("ON_HOLD")
+      expect(job.status).toBe("NOT_STARTED")
     }
   })
 
@@ -273,7 +276,7 @@ describe("combined WFP import counts", () => {
     expect(result2026.jobs.length + resultBeyond.jobs.length).toBe(637)
   })
 
-  it("overall status breakdown: OPEN=30, CLOSED=205, ON_HOLD=402", () => {
+  it("overall status breakdown: active=30, hired=205, inactive=402", () => {
     clearWarnings()
     const sheet2026 = workbook.Sheets["WFP Details - 2026"]!
     const result2026 = parseWfpDetailsSheet(sheet2026, "WFP Details - 2026")
@@ -282,13 +285,16 @@ describe("combined WFP import counts", () => {
     const resultBeyond = parseWfpDetailsSheet(sheetBeyond, "WFP Details - Beyond 2026")
 
     const allJobs = [...result2026.jobs, ...resultBeyond.jobs]
-    const statusCounts = { OPEN: 0, CLOSED: 0, ON_HOLD: 0 }
+    const statusCounts: Record<string, number> = {}
     for (const job of allJobs) {
-      statusCounts[job.status]++
+      statusCounts[job.status] = (statusCounts[job.status] ?? 0) + 1
     }
-    expect(statusCounts.OPEN).toBe(30)
-    expect(statusCounts.CLOSED).toBe(205)
-    expect(statusCounts.ON_HOLD).toBe(402)
+    const activeCount = (statusCounts["OPEN"] ?? 0) + (statusCounts["OFFER"] ?? 0) + (statusCounts["AGENCY"] ?? 0)
+    expect(activeCount).toBe(30)
+    const hiredCount = (statusCounts["HIRED"] ?? 0) + (statusCounts["HIRED_CW"] ?? 0)
+    expect(hiredCount).toBe(205)
+    const inactiveCount = (statusCounts["NOT_STARTED"] ?? 0) + (statusCounts["UNKNOWN"] ?? 0)
+    expect(inactiveCount).toBe(402)
   })
 
   it("IDs are unique across all entities", () => {

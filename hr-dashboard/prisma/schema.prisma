@@ -23,8 +23,12 @@ enum UserRole {
 
 enum JobStatus {
   OPEN
-  CLOSED
-  ON_HOLD
+  OFFER
+  AGENCY
+  HIRED
+  HIRED_CW
+  NOT_STARTED
+  UNKNOWN
 }
 
 enum JobPriority {

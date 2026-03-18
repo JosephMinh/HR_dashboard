@@ -70,10 +70,10 @@ export function clearWarnings(): void {
 
 const RECRUITING_STATUS_MAP: Record<string, JobStatus> = {
   open: "OPEN",
-  offer: "OPEN",
-  agency: "OPEN",
-  hired: "CLOSED",
-  "hired - cw": "CLOSED",
+  offer: "OFFER",
+  agency: "AGENCY",
+  hired: "HIRED",
+  "hired - cw": "HIRED_CW",
 };
 
 export function mapJobStatus(
@@ -81,16 +81,16 @@ export function mapJobStatus(
   sheet: string,
   row: number,
 ): JobStatus {
-  if (sheet === "WFP Details - Beyond 2026") return "ON_HOLD";
+  if (sheet === "WFP Details - Beyond 2026") return "NOT_STARTED";
 
-  if (recruitingStatus == null || recruitingStatus === "") return "ON_HOLD";
+  if (recruitingStatus == null || recruitingStatus === "") return "UNKNOWN";
 
   const normalized = recruitingStatus.toLowerCase().trim();
   const mapped = RECRUITING_STATUS_MAP[normalized];
   if (mapped) return mapped;
 
-  addWarning(sheet, row, "recruitingStatus", recruitingStatus, `Unknown recruiting status, defaulting to ON_HOLD`);
-  return "ON_HOLD";
+  addWarning(sheet, row, "recruitingStatus", recruitingStatus, `Unknown recruiting status, defaulting to UNKNOWN`);
+  return "UNKNOWN";
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ export function mapJobPriority(
 
   // Try numeric parse first
   const num = parseInt(trimmed, 10);
-  if (!isNaN(num)) {
+  if (!Number.isNaN(num)) {
     if (num === 1) return "CRITICAL";
     if (num === 2) return "HIGH";
     if (num === 3 || num === 4) return "MEDIUM";
@@ -126,8 +126,8 @@ export function mapJobPriority(
 // ---------------------------------------------------------------------------
 
 export function mapIsCritical(corporatePriority: string | null): boolean {
-  if (corporatePriority == null) return false;
-  return corporatePriority.trim().length > 0;
+  // Use sanitizeString (not bare .trim()) so NBSP-only cells are treated as empty.
+  return sanitizeString(corporatePriority) != null;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,11 +151,13 @@ function toUtcDayStart(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
+const ACTIVE_STATUSES = new Set<string>(["OPEN", "OFFER", "AGENCY"]);
+
 export function computePipelineHealth(
   status: JobStatus,
   targetFillDate: Date | null,
 ): PipelineHealth | null {
-  if (status !== "OPEN") return null;
+  if (!ACTIVE_STATUSES.has(status)) return null;
 
   if (targetFillDate == null) return "ON_TRACK";
 
@@ -258,7 +260,7 @@ export function parseExcelDate(raw: unknown): Date | null {
     const s = sanitizeString(raw);
     if (s == null || s.toUpperCase() === "TBD") return null;
     const d = new Date(s);
-    return isNaN(d.getTime()) ? null : d;
+    return Number.isNaN(d.getTime()) ? null : d;
   }
   return null;
 }

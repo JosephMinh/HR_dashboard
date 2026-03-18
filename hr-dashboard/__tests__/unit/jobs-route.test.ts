@@ -219,12 +219,12 @@ describe("POST /api/jobs", () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({
-      error: "Pipeline health is required for open jobs",
+      error: "Pipeline health is required for active recruiting jobs",
     })
     expect(createMock).not.toHaveBeenCalled()
   })
 
-  it("sets closedAt when creating a CLOSED job", async () => {
+  it("sets closedAt when creating a HIRED job", async () => {
     authMock.mockResolvedValue({
       user: { id: "user-3", role: "ADMIN" },
     })
@@ -238,7 +238,7 @@ describe("POST /api/jobs", () => {
       location: null,
       hiringManager: null,
       recruiterOwner: null,
-      status: "CLOSED",
+      status: "HIRED",
       priority: "HIGH",
       pipelineHealth: null,
       isCritical: false,
@@ -257,7 +257,7 @@ describe("POST /api/jobs", () => {
           title: "Security Engineer",
           department: "Engineering",
           description: "Harden auth and infrastructure controls.",
-          status: "CLOSED",
+          status: "HIRED",
           priority: "HIGH",
         }),
       }) as never,
@@ -269,7 +269,7 @@ describe("POST /api/jobs", () => {
     expect(createPayload.data.closedAt).toBeInstanceOf(Date)
     await expect(response.json()).resolves.toMatchObject({
       id: "job-42",
-      status: "CLOSED",
+      status: "HIRED",
     })
   })
 })

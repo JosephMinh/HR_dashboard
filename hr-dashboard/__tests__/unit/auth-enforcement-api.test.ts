@@ -169,7 +169,7 @@ describe('API auth enforcement', () => {
       location: null,
       hiringManager: null,
       recruiterOwner: null,
-      status: 'CLOSED',
+      status: 'HIRED',
       priority: 'MEDIUM',
       pipelineHealth: null,
       isCritical: false,
@@ -191,7 +191,7 @@ describe('API auth enforcement', () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({
-      error: 'Pipeline health is required for open jobs',
+      error: 'Pipeline health is required for active recruiting jobs',
     })
     expect(updateJobMock).not.toHaveBeenCalled()
   })
@@ -210,7 +210,7 @@ describe('API auth enforcement', () => {
       location: null,
       hiringManager: null,
       recruiterOwner: null,
-      status: 'CLOSED',
+      status: 'HIRED',
       priority: 'MEDIUM',
       pipelineHealth: null,
       isCritical: false,
@@ -228,7 +228,7 @@ describe('API auth enforcement', () => {
       location: null,
       hiringManager: null,
       recruiterOwner: null,
-      status: 'ON_HOLD',
+      status: 'NOT_STARTED',
       priority: 'MEDIUM',
       pipelineHealth: null,
       isCritical: false,
@@ -243,7 +243,7 @@ describe('API auth enforcement', () => {
     const response = await PATCH(
       new Request('http://localhost/api/jobs/job-3', {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'ON_HOLD' }),
+        body: JSON.stringify({ status: 'NOT_STARTED' }),
       }) as never,
       { params: Promise.resolve({ id: 'job-3' }) },
     )
@@ -252,7 +252,7 @@ describe('API auth enforcement', () => {
     expect(updateJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          status: 'ON_HOLD',
+          status: 'NOT_STARTED',
           closedAt: null,
         }),
       }),
@@ -336,7 +336,7 @@ describe('API auth enforcement', () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({
-      error: 'closedAt can only be set when status is CLOSED',
+      error: 'closedAt can only be set when status is a hired status',
     })
     expect(updateJobMock).not.toHaveBeenCalled()
   })

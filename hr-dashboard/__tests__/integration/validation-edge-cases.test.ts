@@ -339,7 +339,7 @@ describe("Integration: Validation Edge Cases", () => {
   // JOBS API - CROSS-FIELD VALIDATION
   // =========================================================================
   describe("Jobs API - Cross-Field Validation", () => {
-    it("allows CLOSED job without pipelineHealth", async () => {
+    it("allows HIRED job without pipelineHealth", async () => {
       const { POST } = await import("@/app/api/jobs/route")
       const response = await POST(
         new Request("http://localhost/api/jobs", {
@@ -348,7 +348,7 @@ describe("Integration: Validation Edge Cases", () => {
             title: "Valid Title",
             department: "Engineering",
             description: "Valid description text here.",
-            status: "CLOSED",
+            status: "HIRED",
           }),
         }) as never,
       )
@@ -356,7 +356,7 @@ describe("Integration: Validation Edge Cases", () => {
       expect(response.status).toBe(201)
     })
 
-    it("allows ON_HOLD job without pipelineHealth", async () => {
+    it("allows NOT_STARTED job without pipelineHealth", async () => {
       const { POST } = await import("@/app/api/jobs/route")
       const response = await POST(
         new Request("http://localhost/api/jobs", {
@@ -365,7 +365,7 @@ describe("Integration: Validation Edge Cases", () => {
             title: "Valid Title",
             department: "Engineering",
             description: "Valid description text here.",
-            status: "ON_HOLD",
+            status: "NOT_STARTED",
           }),
         }) as never,
       )

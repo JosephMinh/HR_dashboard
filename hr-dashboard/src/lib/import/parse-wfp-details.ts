@@ -221,8 +221,9 @@ export function parseWfpDetailsSheet(
 
     const pipelineHealth = computePipelineHealth(status, targetFillDate);
 
-    // For closed roles, closedAt defaults to targetFillDate
-    const closedAt = status === "CLOSED" ? targetFillDate : null;
+    // For hired roles, closedAt defaults to targetFillDate
+    const HIRED_SET = new Set(["HIRED", "HIRED_CW"]);
+    const closedAt = HIRED_SET.has(status) ? targetFillDate : null;
 
     const job: ParsedJob = {
       id,

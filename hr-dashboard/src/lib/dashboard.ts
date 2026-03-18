@@ -1,5 +1,6 @@
-import { ApplicationStage, JobStatus, type PipelineHealth } from "@/generated/prisma/enums"
+import { ApplicationStage, type JobStatus, type PipelineHealth } from "@/generated/prisma/enums"
 import { prisma } from "@/lib/prisma"
+import { ACTIVE_RECRUITING_STATUSES, HIRED_STATUSES } from "@/lib/status-config"
 
 export interface CriticalJobSummary {
   id: string
@@ -71,18 +72,18 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     recentJobs,
   ] = await prisma.$transaction([
     prisma.job.count({
-      where: { status: JobStatus.OPEN },
+      where: { status: { in: [...ACTIVE_RECRUITING_STATUSES] } },
     }),
     prisma.job.count({
-      where: { status: JobStatus.CLOSED },
+      where: { status: { in: [...HIRED_STATUSES] } },
     }),
     prisma.job.count({
-      where: { status: JobStatus.OPEN, isCritical: true },
+      where: { status: { in: [...ACTIVE_RECRUITING_STATUSES] }, isCritical: true },
     }),
     prisma.application.findMany({
       where: {
         job: {
-          status: JobStatus.OPEN,
+          status: { in: [...ACTIVE_RECRUITING_STATUSES] },
         },
         stage: {
           notIn: [...INACTIVE_APPLICATION_STAGES],
@@ -95,25 +96,25 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     }),
     prisma.job.count({
       where: {
-        status: JobStatus.OPEN,
+        status: { in: [...ACTIVE_RECRUITING_STATUSES] },
         pipelineHealth: "AHEAD",
       },
     }),
     prisma.job.count({
       where: {
-        status: JobStatus.OPEN,
+        status: { in: [...ACTIVE_RECRUITING_STATUSES] },
         pipelineHealth: "ON_TRACK",
       },
     }),
     prisma.job.count({
       where: {
-        status: JobStatus.OPEN,
+        status: { in: [...ACTIVE_RECRUITING_STATUSES] },
         pipelineHealth: "BEHIND",
       },
     }),
     prisma.job.findMany({
       where: {
-        status: JobStatus.OPEN,
+        status: { in: [...ACTIVE_RECRUITING_STATUSES] },
         isCritical: true,
       },
       select: {
@@ -138,7 +139,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     }),
     prisma.job.findMany({
       where: {
-        status: JobStatus.OPEN,
+        status: { in: [...ACTIVE_RECRUITING_STATUSES] },
       },
       orderBy: { updatedAt: "desc" },
       take: 10,

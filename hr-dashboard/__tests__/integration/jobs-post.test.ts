@@ -108,7 +108,7 @@ describe("Integration: POST /api/jobs", () => {
           title: "Staff Engineer",
           department: "Engineering",
           description: "Lead core platform strategy.",
-          status: "CLOSED",
+          status: "HIRED",
           priority: "HIGH",
         }),
       }) as never,
@@ -116,13 +116,13 @@ describe("Integration: POST /api/jobs", () => {
 
     expect(response.status).toBe(201)
     const payload = await response.json()
-    expect(payload.status).toBe("CLOSED")
+    expect(payload.status).toBe("HIRED")
     expect(payload.closedAt).not.toBeNull()
 
     const prisma = getTestPrisma()
     const job = await prisma.job.findUnique({ where: { id: payload.id } })
     expect(job).not.toBeNull()
-    expect(job?.status).toBe("CLOSED")
+    expect(job?.status).toBe("HIRED")
 
     const audit = await prisma.auditLog.findFirst({
       where: { entityId: payload.id, action: "JOB_CREATED" },

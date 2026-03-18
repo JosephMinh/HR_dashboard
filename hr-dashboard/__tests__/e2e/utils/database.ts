@@ -96,7 +96,7 @@ export async function seedTestUsers(): Promise<void> {
 export async function seedTestJobs(count = 5): Promise<string[]> {
   const prisma = getE2EPrisma()
   const departments = ["Engineering", "Product", "Design", "Marketing", "Sales"]
-  const statuses = ["OPEN", "CLOSED", "ON_HOLD"] as const
+  const statuses = ["OPEN", "OFFER", "AGENCY", "HIRED", "HIRED_CW", "NOT_STARTED", "UNKNOWN"] as const
   const priorities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const
   const pipelineHealthLevels = ["BEHIND", "ON_TRACK", "AHEAD"] as const
 

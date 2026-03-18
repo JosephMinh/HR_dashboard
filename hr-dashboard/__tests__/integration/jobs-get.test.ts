@@ -26,7 +26,7 @@ describe("Integration: GET /api/jobs", () => {
     await factories.createJob({
       title: "Closed Role",
       department: "Engineering",
-      status: "CLOSED",
+      status: "HIRED",
     })
 
     const { GET } = await import("@/app/api/jobs/route")
@@ -254,7 +254,7 @@ describe("Integration: GET /api/jobs", () => {
           status: "OPEN",
         })
       }
-      await factories.createJob({ title: "Closed Job", department: "Engineering", status: "CLOSED" })
+      await factories.createJob({ title: "Closed Job", department: "Engineering", status: "HIRED" })
 
       const { GET } = await import("@/app/api/jobs/route")
       const response = await GET(

@@ -6,7 +6,7 @@
 import z from 'zod'
 
 // Enums matching Prisma schema
-export const JobStatus = z.enum(['OPEN', 'CLOSED', 'ON_HOLD'])
+export const JobStatus = z.enum(['OPEN', 'OFFER', 'AGENCY', 'HIRED', 'HIRED_CW', 'NOT_STARTED', 'UNKNOWN'])
 export const JobPriority = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
 export const PipelineHealth = z.enum(['AHEAD', 'ON_TRACK', 'BEHIND'])
 export const Horizon = z.enum(['2026', 'Beyond 2026'])
@@ -79,13 +79,14 @@ export const JobSchema = z
   )
   .refine(
     (data) => {
-      if (data.status === 'OPEN') {
+      const activeStatuses = new Set(['OPEN', 'OFFER', 'AGENCY'])
+      if (activeStatuses.has(data.status)) {
         return data.pipelineHealth !== null && data.pipelineHealth !== undefined
       }
       return true
     },
     {
-      message: 'Pipeline health is required for open jobs',
+      message: 'Pipeline health is required for active recruiting jobs',
       path: ['pipelineHealth'],
     }
   )

@@ -265,7 +265,7 @@ export default async function CandidateDetailPage({ params }: PageParams) {
               <div className="divide-y divide-border/50">
                 {candidate.applications.map((app) => {
                   const { text: relativeTime, isRecent } = formatRelativeTime(new Date(app.stageUpdatedAt))
-                  const isActiveJob = app.job.status === 'OPEN' || app.job.status === 'ON_HOLD'
+                  const isActiveJob = app.job.status !== 'HIRED' && app.job.status !== 'HIRED_CW'
 
                   return (
                     <div

@@ -45,7 +45,7 @@ describe("Integration: GET /api/dashboard/stats", () => {
     await factories.createJob({
       title: "Closed Role",
       department: "Ops",
-      status: "CLOSED",
+      status: "HIRED",
     })
 
     await prisma.job.update({
