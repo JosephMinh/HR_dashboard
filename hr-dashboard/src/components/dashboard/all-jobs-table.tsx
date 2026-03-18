@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, Briefcase, ChevronDown, Plus } from 'lucide-react'
+import { Briefcase, ChevronDown, Plus } from 'lucide-react'
 import type { ColumnDef, PaginationState, SortingState } from '@tanstack/react-table'
 
 import { buttonVariants } from '@/components/ui/button'
@@ -48,7 +48,7 @@ const columns: ColumnDef<Job>[] = [
           className="font-medium hover:underline flex items-center gap-2"
         >
           {row.original.isCritical && (
-            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden="true" />
           )}
           {row.original.title}
         </Link>
@@ -80,8 +80,8 @@ const columns: ColumnDef<Job>[] = [
     enableSorting: false,
     cell: ({ row }) =>
       row.original.isCritical ? (
-        <span className="inline-flex items-center gap-1 text-sm text-red-600">
-          <AlertTriangle className="h-4 w-4" />
+        <span className="inline-flex items-center gap-1.5 text-sm text-red-600">
+          <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden="true" />
           Critical
         </span>
       ) : (

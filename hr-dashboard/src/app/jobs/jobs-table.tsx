@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/select'
 import { JOB_STATUS, JOB_PRIORITY, PIPELINE_HEALTH } from '@/lib/status-config'
 import { cn } from '@/lib/utils'
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useJobsQuery } from '@/hooks/queries'
 
 const ITEMS_PER_PAGE = 20
@@ -239,7 +239,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                         className="font-medium hover:underline flex items-center gap-2"
                       >
                         {job.isCritical && (
-                          <AlertTriangle className="h-4 w-4 text-red-500" aria-hidden="true" />
+                          <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden="true" />
                         )}
                         {job.title}
                       </Link>

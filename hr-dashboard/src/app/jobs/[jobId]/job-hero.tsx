@@ -8,7 +8,6 @@ import {
   JobPriorityBadge,
 } from '@/components/ui/status-badge'
 import {
-  AlertTriangle,
   Calendar,
   Clock,
   MapPin,
@@ -90,7 +89,7 @@ export function JobHero({
           {/* Critical indicator */}
           {job.isCritical && (
             <div className="flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400 mb-2">
-              <AlertTriangle className="h-4 w-4" />
+              <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden="true" />
               Critical Role
             </div>
           )}

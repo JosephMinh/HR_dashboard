@@ -10,7 +10,7 @@ import { PipelineSummary } from '@/components/ui/pipeline-summary'
 import { TableSkeleton } from '@/components/ui/loading-skeleton'
 import { AttentionQueue } from '@/components/dashboard/attention-queue'
 import { DashboardJobsTable } from './dashboard-jobs-table'
-import { Briefcase, Users, AlertTriangle, TrendingUp } from 'lucide-react'
+import { Briefcase, Users, TrendingUp } from 'lucide-react'
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -96,7 +96,7 @@ export default async function DashboardPage() {
                     </p>
                   </div>
                   <div className={`rounded-lg p-2.5 transition-transform group-hover:scale-105 ${stats.activeCriticalJobs > 0 ? 'bg-destructive/10' : 'bg-muted'}`}>
-                    <AlertTriangle className={`h-5 w-5 ${stats.activeCriticalJobs > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                    <Briefcase className={`h-5 w-5 ${stats.activeCriticalJobs > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
                   </div>
                 </div>
               </CardContent>

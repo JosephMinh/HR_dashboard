@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { AlertTriangle, Clock, TrendingDown, Users, ChevronRight, Briefcase } from 'lucide-react'
+import { Clock, TrendingDown, Users, ChevronRight, Briefcase, CircleDot } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { PipelineHealthBadge } from '@/components/ui/status-badge'
@@ -79,7 +79,7 @@ function getTypeIcon(type: AttentionItem['type']) {
     case 'low_candidates':
       return Users
     default:
-      return AlertTriangle
+      return CircleDot
   }
 }
 
@@ -109,7 +109,7 @@ export function AttentionQueue({ criticalJobs, className }: AttentionQueueProps)
       <Card className={cn('shadow-premium-sm', className)}>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <Briefcase className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             Attention Queue
           </CardTitle>
         </CardHeader>
@@ -133,7 +133,7 @@ export function AttentionQueue({ criticalJobs, className }: AttentionQueueProps)
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
-            <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />
+            <Briefcase className="h-4 w-4 text-destructive" aria-hidden="true" />
             Attention Queue
             <span className="ml-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
               {attentionItems.length}
