@@ -96,4 +96,26 @@ describe('api-client', () => {
       '/api/jobs?location=Chicago%2C+IL&location=Remote&department=Engineering&department=__MISSING__&includeCount=true',
     )
   })
+
+  it('buildUrl omits empty arrays entirely', () => {
+    expect(
+      buildUrl('/api/jobs', {
+        department: [],
+        status: 'OPEN',
+      }),
+    ).toBe('/api/jobs?status=OPEN')
+  })
+
+  it('buildUrl treats single-element array identically to a scalar', () => {
+    const withArray = buildUrl('/api/jobs', { department: ['Engineering'] })
+    const withScalar = buildUrl('/api/jobs', { department: 'Engineering' })
+    expect(withArray).toBe(withScalar)
+    expect(withArray).toBe('/api/jobs?department=Engineering')
+  })
+
+  it('buildUrl preserves comma in array element values without splitting', () => {
+    expect(
+      buildUrl('/api/jobs', { location: ['Chicago, IL'] }),
+    ).toBe('/api/jobs?location=Chicago%2C+IL')
+  })
 })

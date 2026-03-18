@@ -46,11 +46,10 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
-// Preserve real job-status exports while narrowing the application-stage surface
-// this test cares about.
+// Minimal mock for status-config — spread the real module so transitive
+// consumers (e.g. job-filter-constants) still find JOB_STATUS etc.
 vi.mock('@/lib/status-config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/status-config')>()
-
   return {
     ...actual,
     APPLICATION_STAGE: {

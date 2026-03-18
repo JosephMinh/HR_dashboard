@@ -15,6 +15,91 @@ import {
   queryKeys,
 } from '@/lib/query-keys'
 
+describe('normalizeJobsFilterParam', () => {
+  // Import the function under test directly
+  let normalizeJobsFilterParam: typeof import('@/lib/query-keys').normalizeJobsFilterParam
+
+  beforeEach(async () => {
+    ;({ normalizeJobsFilterParam } = await import('@/lib/query-keys'))
+  })
+
+  it('returns undefined for undefined input', () => {
+    expect(normalizeJobsFilterParam(undefined)).toBeUndefined()
+  })
+
+  it('returns undefined for empty string', () => {
+    expect(normalizeJobsFilterParam('')).toBeUndefined()
+  })
+
+  it('returns undefined for whitespace-only string', () => {
+    expect(normalizeJobsFilterParam('   ')).toBeUndefined()
+  })
+
+  it('trims a scalar string', () => {
+    expect(normalizeJobsFilterParam('  Engineering  ')).toBe('Engineering')
+  })
+
+  it('passes through a normal scalar unchanged', () => {
+    expect(normalizeJobsFilterParam('Remote')).toBe('Remote')
+  })
+
+  it('returns undefined for an empty array', () => {
+    expect(normalizeJobsFilterParam([])).toBeUndefined()
+  })
+
+  it('returns undefined for an array of only empty/whitespace strings', () => {
+    expect(normalizeJobsFilterParam(['', '  ', ''])).toBeUndefined()
+  })
+
+  it('collapses a single-element array to a scalar', () => {
+    expect(normalizeJobsFilterParam(['Engineering'])).toBe('Engineering')
+  })
+
+  it('collapses a single-element array with whitespace to a trimmed scalar', () => {
+    expect(normalizeJobsFilterParam(['  Remote  '])).toBe('Remote')
+  })
+
+  it('deduplicates array values', () => {
+    expect(normalizeJobsFilterParam(['Engineering', 'Engineering', 'Product']))
+      .toEqual(['Engineering', 'Product'])
+  })
+
+  it('deduplicates after trimming', () => {
+    expect(normalizeJobsFilterParam([' Engineering ', 'Engineering']))
+      .toBe('Engineering')
+  })
+
+  it('sorts array values with locale-aware comparison', () => {
+    expect(normalizeJobsFilterParam(['Zebra', 'Apple', 'Mango']))
+      .toEqual(['Apple', 'Mango', 'Zebra'])
+  })
+
+  it('sorts the __MISSING__ sentinel to the end', () => {
+    expect(normalizeJobsFilterParam(['__MISSING__', 'Engineering', 'Remote']))
+      .toEqual(['Engineering', 'Remote', '__MISSING__'])
+  })
+
+  it('handles mixed sentinel + concrete values for nullable fields', () => {
+    expect(normalizeJobsFilterParam(['Remote', '__MISSING__', 'Chicago, IL']))
+      .toEqual(['Chicago, IL', 'Remote', '__MISSING__'])
+  })
+
+  it('preserves comma-containing values without splitting', () => {
+    const result = normalizeJobsFilterParam(['Chicago, IL', 'New York, NY'])
+    expect(result).toEqual(['Chicago, IL', 'New York, NY'])
+  })
+
+  it('uses numeric-aware sorting (e.g. L2 before L10)', () => {
+    expect(normalizeJobsFilterParam(['L10', 'L2', 'L5']))
+      .toEqual(['L2', 'L5', 'L10'])
+  })
+
+  it('filters out empty strings from arrays', () => {
+    expect(normalizeJobsFilterParam(['Engineering', '', 'Product']))
+      .toEqual(['Engineering', 'Product'])
+  })
+})
+
 describe('queryKeys factory', () => {
   describe('jobs', () => {
     it('returns stable all key', () => {

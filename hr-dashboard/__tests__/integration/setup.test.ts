@@ -10,6 +10,10 @@ import {
   setupIntegrationTests,
   getTestPrisma,
   createTestFactories,
+  resetFixtureCounter,
+  uniqueEmail,
+  uniqueId,
+  uniqueImportKey,
 } from "@/test/setup-integration"
 
 describe("Integration Test Infrastructure", () => {
@@ -125,5 +129,15 @@ describe("Integration Test Infrastructure", () => {
     for (const app of applications) {
       expect(app.jobId).toBe(job.id)
     }
+  })
+
+  it("generates deterministic fixture tokens within a worker scope", () => {
+    resetFixtureCounter()
+
+    expect(uniqueId("Candidate User")).toMatch(/^candidate-user-[a-z0-9-]+-0001$/)
+    expect(uniqueEmail("Recruiter User")).toMatch(
+      /^recruiter-user-[a-z0-9-]+-0002@test\.example\.com$/,
+    )
+    expect(uniqueImportKey("SheetA", 12)).toMatch(/^SheetA:12:[a-z0-9-]+-0003$/)
   })
 })

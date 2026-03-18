@@ -218,6 +218,77 @@ describe("GET /api/jobs", () => {
     )
   })
 
+  it("handles mixed __MISSING__ plus concrete values for nullable fields (OR within category)", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "user-1", role: "RECRUITER" },
+    })
+    findManyMock.mockResolvedValue([])
+    countMock.mockResolvedValue(0)
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?location=Remote&location=__MISSING__&recruiterOwner=Jane+Recruiter&recruiterOwner=__MISSING__",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    // buildNullableStringFieldFilter with 1 concrete + __MISSING__ produces:
+    // { OR: [fieldEquals(field, value), { OR: [{ field: null }, { field: "" }] }] }
+    expect(countMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { location: "Remote" },
+                { OR: [{ location: null }, { location: "" }] },
+              ],
+            },
+            {
+              OR: [
+                { recruiterOwner: "Jane Recruiter" },
+                { OR: [{ recruiterOwner: null }, { recruiterOwner: "" }] },
+              ],
+            },
+          ],
+        }),
+      }),
+    )
+  })
+
+  it("handles multiple concrete values plus __MISSING__ for nullable fields", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "user-1", role: "RECRUITER" },
+    })
+    findManyMock.mockResolvedValue([])
+    countMock.mockResolvedValue(0)
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?location=Remote&location=Chicago%2C%20IL&location=__MISSING__",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    // 2 concrete values + missing → { OR: [fieldIn(...), fieldMissing(...)] }
+    expect(countMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { location: { in: ["Remote", "Chicago, IL"] } },
+                { OR: [{ location: null }, { location: "" }] },
+              ],
+            },
+          ],
+        }),
+      }),
+    )
+  })
+
   it("maps the missing-value token to null-or-empty predicates", async () => {
     authMock.mockResolvedValue({
       user: { id: "user-1", role: "RECRUITER" },
