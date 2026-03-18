@@ -205,13 +205,6 @@ export async function GET(request: NextRequest) {
   // Build orderBy
   const orderBy: Prisma.JobOrderByWithRelationInput[] = []
 
-  // Default: OPEN jobs first
-  if (sortField !== 'status') {
-    orderBy.push({
-      status: 'asc', // OPEN (alphabetically first) comes before ON_HOLD, CLOSED
-    })
-  }
-
   // Add requested sort
   if (sortField === 'title') {
     orderBy.push({ title: sortOrder })
@@ -427,9 +420,10 @@ export async function POST(request: NextRequest) {
 
   const status = body.status ?? JobStatus.OPEN
   const pipelineHealth = body.pipelineHealth ?? null
-  if (status === JobStatus.OPEN && pipelineHealth === null) {
+  const ACTIVE_STATUS_SET = new Set<JobStatus>([JobStatus.OPEN, JobStatus.OFFER, JobStatus.AGENCY])
+  if (ACTIVE_STATUS_SET.has(status) && pipelineHealth === null) {
     return NextResponse.json(
-      { error: 'Pipeline health is required for open jobs' },
+      { error: 'Pipeline health is required for active recruiting jobs' },
       { status: 400 },
     )
   }
@@ -459,7 +453,7 @@ export async function POST(request: NextRequest) {
     isCritical: body.isCritical ?? false,
     openedAt: openedAt ?? new Date(),
     targetFillDate: targetFillDate ?? null,
-    closedAt: status === JobStatus.CLOSED ? new Date() : null,
+    closedAt: (status === JobStatus.HIRED || status === JobStatus.HIRED_CW) ? new Date() : null,
   }
 
   const job = await prisma.job.create({

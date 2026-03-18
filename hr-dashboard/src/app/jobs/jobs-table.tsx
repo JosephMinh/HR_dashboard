@@ -138,7 +138,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
             value={status}
             onValueChange={(value) => updateParams({ status: value })}
           >
-            <SelectTrigger className="w-32" aria-label="Filter by status">
+            <SelectTrigger className="w-40" aria-label="Filter by status">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -206,54 +206,9 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
             <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[300px]" aria-sort={getAriaSort('title')}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleSort('title')}
-                      className="-ml-3"
-                      aria-label={
-                        sort === 'title'
-                          ? `Sorted by title, ${order}. Activate to change sort order.`
-                          : 'Sort by title'
-                      }
-                    >
-                      Title
-                      {getSortIcon('title')}
-                    </Button>
-                  </TableHead>
-                  <TableHead aria-sort={getAriaSort('department')}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleSort('department')}
-                      className="-ml-3"
-                      aria-label={
-                        sort === 'department'
-                          ? `Sorted by department, ${order}. Activate to change sort order.`
-                          : 'Sort by department'
-                      }
-                    >
-                      Department
-                      {getSortIcon('department')}
-                    </Button>
-                  </TableHead>
-                  <TableHead aria-sort={getAriaSort('status')}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleSort('status')}
-                      className="-ml-3"
-                      aria-label={
-                        sort === 'status'
-                          ? `Sorted by status, ${order}. Activate to change sort order.`
-                          : 'Sort by status'
-                      }
-                    >
-                      Status
-                      {getSortIcon('status')}
-                    </Button>
-                  </TableHead>
+                  <TableHead className="w-[300px]">Title</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Pipeline</TableHead>
                   <TableHead className="text-center">Candidates</TableHead>

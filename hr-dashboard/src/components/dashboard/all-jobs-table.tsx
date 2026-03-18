@@ -40,7 +40,7 @@ const columns: ColumnDef<Job>[] = [
   {
     accessorKey: 'title',
     header: 'Title',
-    enableSorting: true,
+    enableSorting: false,
     cell: ({ row }) => (
       <>
         <Link
@@ -62,7 +62,7 @@ const columns: ColumnDef<Job>[] = [
   {
     accessorKey: 'department',
     header: 'Department',
-    enableSorting: true,
+    enableSorting: false,
     cell: ({ row }) => (
       <span className="text-muted-foreground">{row.original.department}</span>
     ),
@@ -71,7 +71,7 @@ const columns: ColumnDef<Job>[] = [
   {
     accessorKey: 'status',
     header: 'Status',
-    enableSorting: true,
+    enableSorting: false,
     cell: ({ row }) => <JobStatusBadge value={row.original.status} size="sm" />,
   },
   {
