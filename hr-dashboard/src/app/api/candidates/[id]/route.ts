@@ -361,18 +361,21 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Candidate not found' }, { status: 404 })
   }
 
-  // Clean up resume file from storage if present
+  // Delete candidate first (applications cascade delete per schema),
+  // then clean up the resume file. This ordering ensures that if the DB
+  // delete fails (e.g. concurrent delete → P2025), we don't orphan-delete
+  // a file that's still referenced. The cleanup cron handles any leftover
+  // S3 files if the storage delete fails.
+  await prisma.candidate.delete({ where: { id } })
+
   if (existing.resumeKey) {
     try {
       await deleteObject(existing.resumeKey)
     } catch (error) {
-      // Log but don't fail deletion - file might already be deleted or storage unavailable
+      // Log but don't fail — the orphan cleanup cron will catch this
       console.error('Failed to delete resume file from storage:', error)
     }
   }
-
-  // Delete candidate (applications cascade delete per schema)
-  await prisma.candidate.delete({ where: { id } })
 
   // Audit log
   await logAuditDelete({
