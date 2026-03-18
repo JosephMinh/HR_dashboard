@@ -5,7 +5,6 @@
  * correct row counts, status breakdowns, and edge case handling.
  */
 
-import * as path from "path"
 import * as XLSX from "xlsx"
 import { describe, expect, it, beforeAll } from "vitest"
 
@@ -13,15 +12,13 @@ import { parseWfpDetailsSheet } from "@/lib/import/parse-wfp-details"
 import { parseBudgetSheet } from "@/lib/import/parse-budget"
 import { parseTradeoffsSheet } from "@/lib/import/parse-tradeoffs"
 import { clearWarnings } from "@/lib/wfp-sanitize"
+import { discoverWorkbook } from "../../prisma/import-wfp"
 
 // ---------------------------------------------------------------------------
 // Load workbook once for all tests
 // ---------------------------------------------------------------------------
 
-const WORKBOOK_PATH = path.resolve(
-  __dirname,
-  "../../2026 WFP - Approved (1).xlsx",
-)
+const WORKBOOK_PATH = discoverWorkbook()
 
 let workbook: XLSX.WorkBook
 
@@ -47,12 +44,12 @@ describe("parseWfpDetailsSheet — 2026", () => {
     expect(result.jobs.length).toBe(343)
   })
 
-  it("extracts 205 candidates from hired rows", () => {
-    expect(result.candidates.length).toBe(205)
+  it("extracts 208 candidates from hired rows", () => {
+    expect(result.candidates.length).toBe(208)
   })
 
-  it("creates 205 applications from hired rows", () => {
-    expect(result.applications.length).toBe(205)
+  it("creates 208 applications from hired rows", () => {
+    expect(result.applications.length).toBe(208)
   })
 
   it("has correct status breakdown", () => {
@@ -60,13 +57,13 @@ describe("parseWfpDetailsSheet — 2026", () => {
     for (const job of result.jobs) {
       statusCounts[job.status] = (statusCounts[job.status] ?? 0) + 1
     }
-    // open=27, offer=3, agency=0 from the spreadsheet data
+    // open=26, offer=0, agency=2 from the updated spreadsheet data
     const activeCount = (statusCounts["OPEN"] ?? 0) + (statusCounts["OFFER"] ?? 0) + (statusCounts["AGENCY"] ?? 0)
-    expect(activeCount).toBe(30)
+    expect(activeCount).toBe(28)
     const hiredCount = (statusCounts["HIRED"] ?? 0) + (statusCounts["HIRED_CW"] ?? 0)
-    expect(hiredCount).toBe(205)
+    expect(hiredCount).toBe(208)
     // Remaining are UNKNOWN (blank status)
-    expect(statusCounts["UNKNOWN"] ?? 0).toBe(343 - 30 - 205)
+    expect(statusCounts["UNKNOWN"] ?? 0).toBe(343 - 28 - 208)
   })
 
   it("sets horizon to '2026' for all jobs", () => {
@@ -234,7 +231,7 @@ describe("parseTradeoffsSheet", () => {
   })
 
   it("parses the expected number of tradeoffs", () => {
-    expect(result.tradeoffs.length).toBe(17)
+    expect(result.tradeoffs.length).toBe(19)
   })
 
   it("every tradeoff has a non-empty id and importKey", () => {
@@ -276,7 +273,7 @@ describe("combined WFP import counts", () => {
     expect(result2026.jobs.length + resultBeyond.jobs.length).toBe(637)
   })
 
-  it("overall status breakdown: active=30, hired=205, inactive=402", () => {
+  it("overall status breakdown: active=28, hired=208, inactive=401", () => {
     clearWarnings()
     const sheet2026 = workbook.Sheets["WFP Details - 2026"]!
     const result2026 = parseWfpDetailsSheet(sheet2026, "WFP Details - 2026")
@@ -290,11 +287,11 @@ describe("combined WFP import counts", () => {
       statusCounts[job.status] = (statusCounts[job.status] ?? 0) + 1
     }
     const activeCount = (statusCounts["OPEN"] ?? 0) + (statusCounts["OFFER"] ?? 0) + (statusCounts["AGENCY"] ?? 0)
-    expect(activeCount).toBe(30)
+    expect(activeCount).toBe(28)
     const hiredCount = (statusCounts["HIRED"] ?? 0) + (statusCounts["HIRED_CW"] ?? 0)
-    expect(hiredCount).toBe(205)
+    expect(hiredCount).toBe(208)
     const inactiveCount = (statusCounts["NOT_STARTED"] ?? 0) + (statusCounts["UNKNOWN"] ?? 0)
-    expect(inactiveCount).toBe(402)
+    expect(inactiveCount).toBe(401)
   })
 
   it("IDs are unique across all entities", () => {

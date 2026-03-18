@@ -36,12 +36,77 @@ import type {
 // Configuration
 // ---------------------------------------------------------------------------
 
-// prisma/ is one level below hr-dashboard/, where the workbook lives
-export const DEFAULT_WORKBOOK_PATH = path.resolve(
-  __dirname,
-  "..",
-  "2026 WFP - Approved (1).xlsx",
-);
+/**
+ * Pattern matching the canonical WFP workbook naming convention.
+ * Matches: "2026 WFP - Approved.xlsx", "2026 WFP - Approved (1).xlsx",
+ *          "2026 WFP - Approved (2).xlsx", etc.
+ * The optional parenthesised number is treated as a revision index.
+ */
+const WFP_WORKBOOK_PATTERN = /^2026 WFP - Approved(?: \((\d+)\))?\.xlsx$/;
+
+/**
+ * Discover the current WFP workbook in the hr-dashboard root directory.
+ *
+ * Resolution order:
+ * 1. WFP_WORKBOOK_PATH env var (absolute or relative to hr-dashboard root)
+ * 2. Scan hr-dashboard root for files matching the canonical naming pattern;
+ *    if multiple revisions exist, select the highest revision deterministically.
+ */
+export function discoverWorkbook(): string {
+  const hrDashboardRoot = path.resolve(__dirname, "..");
+
+  // 1. Explicit override via environment
+  const envPath = process.env.WFP_WORKBOOK_PATH?.trim();
+  if (envPath) {
+    return path.isAbsolute(envPath)
+      ? envPath
+      : path.resolve(hrDashboardRoot, envPath);
+  }
+
+  // 2. Auto-discover from canonical naming pattern
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(hrDashboardRoot);
+  } catch {
+    throw new Error(
+      `Cannot read hr-dashboard root at ${hrDashboardRoot} while searching for WFP workbook.`,
+    );
+  }
+
+  const matches: { filename: string; revision: number }[] = [];
+  for (const entry of entries) {
+    const m = WFP_WORKBOOK_PATTERN.exec(entry);
+    if (m) {
+      // No parenthesised suffix → revision 0; "(N)" → revision N
+      const revision = m[1] ? Number.parseInt(m[1], 10) : 0;
+      matches.push({ filename: entry, revision });
+    }
+  }
+
+  if (matches.length === 0) {
+    throw new Error(
+      `No WFP workbook found in ${hrDashboardRoot}. ` +
+        'Expected a file matching "2026 WFP - Approved*.xlsx". ' +
+        "Place the workbook in the hr-dashboard root or set WFP_WORKBOOK_PATH.",
+    );
+  }
+
+  // Highest revision wins; deterministic tie-break on filename
+  matches.sort((a, b) => b.revision - a.revision || a.filename.localeCompare(b.filename));
+  const chosen = matches[0]!;
+
+  if (matches.length > 1) {
+    console.log(
+      `Found ${matches.length} WFP workbooks; selecting latest revision: ${chosen.filename}`,
+    );
+  }
+
+  return path.join(hrDashboardRoot, chosen.filename);
+}
+
+// DEFAULT_WORKBOOK_PATH is now resolved lazily via discoverWorkbook() in
+// runWfpImport(). Direct callers that need an explicit path should call
+// discoverWorkbook() or pass WFP_WORKBOOK_PATH in the environment.
 
 // ---------------------------------------------------------------------------
 // matchedJobId resolution (PLAN.md §6e)
@@ -126,7 +191,8 @@ function loadWorkbook(workbookPath: string): XLSX.WorkBook {
   if (!fs.existsSync(workbookPath)) {
     throw new Error(
       `WFP workbook not found at ${workbookPath}. ` +
-        "Place '2026 WFP - Approved (1).xlsx' in the hr-dashboard root before running WFP seed mode.",
+        "Place a matching '2026 WFP - Approved*.xlsx' workbook in the hr-dashboard root " +
+        "or set WFP_WORKBOOK_PATH before running WFP seed mode.",
     );
   }
 
@@ -135,13 +201,14 @@ function loadWorkbook(workbookPath: string): XLSX.WorkBook {
 
 export async function runWfpImport({
   prisma,
-  workbookPath = DEFAULT_WORKBOOK_PATH,
+  workbookPath,
 }: WfpImportOptions = {}): Promise<WfpImportSummary> {
+  const resolvedPath = workbookPath ?? discoverWorkbook();
   console.log("=== WFP Data Import ===\n");
 
   // 1. Read workbook
-  console.log(`Reading workbook: ${workbookPath}`);
-  const workbook = loadWorkbook(workbookPath);
+  console.log(`Reading workbook: ${resolvedPath}`);
+  const workbook = loadWorkbook(resolvedPath);
   console.log(`Sheets: ${workbook.SheetNames.join(", ")}\n`);
 
   // 2. Parse all sheets
