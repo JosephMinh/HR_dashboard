@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { api, ApiError } from '@/lib/api-client'
+import { api, ApiError, buildUrl } from '@/lib/api-client'
 
 describe('api-client', () => {
   afterEach(() => {
@@ -83,5 +83,17 @@ describe('api-client', () => {
         })
       }
     }
+  })
+
+  it('buildUrl emits repeated params for array values without CSV coercion', () => {
+    expect(
+      buildUrl('/api/jobs', {
+        location: ['Chicago, IL', 'Remote'],
+        department: ['Engineering', '__MISSING__'],
+        includeCount: true,
+      }),
+    ).toBe(
+      '/api/jobs?location=Chicago%2C+IL&location=Remote&department=Engineering&department=__MISSING__&includeCount=true',
+    )
   })
 })
