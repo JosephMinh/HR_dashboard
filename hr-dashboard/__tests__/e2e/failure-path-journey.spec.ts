@@ -458,36 +458,36 @@ test.describe("Email Delivery Failure Paths", { tag: "@failure-email" }, () => {
     await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
     await expect(adminPage.getByText("User Management")).toBeVisible({ timeout: 10_000 })
 
-    await adminPage.getByRole("button", { name: /new user/i }).click()
-    await adminPage.fill("#create-name", "Failure Email User")
-    await adminPage.fill("#create-email", testEmail)
-    await adminPage.selectOption("#create-role", "VIEWER")
-    await adminPage.getByRole("button", { name: /^create user$/i }).click()
+    try {
+      await adminPage.getByRole("button", { name: /new user/i }).click()
+      await adminPage.fill("#create-name", "Failure Email User")
+      await adminPage.fill("#create-email", testEmail)
+      await adminPage.selectOption("#create-role", "VIEWER")
+      await adminPage.getByRole("button", { name: /^create user$/i }).click()
 
-    // Warning banner — NOT the success message
-    await expect(
-      adminPage.getByText(/invite email could not be sent/i),
-    ).toBeVisible({ timeout: 10_000 })
-    await expect(
-      adminPage.getByText(/share the setup link manually/i),
-    ).toBeVisible()
+      // Warning banner — NOT the success message
+      await expect(
+        adminPage.getByText(/invite email could not be sent/i),
+      ).toBeVisible({ timeout: 10_000 })
+      await expect(
+        adminPage.getByText(/share the setup link manually/i),
+      ).toBeVisible()
 
-    // Setup URL is shown so the admin can distribute it manually
-    await expect(adminPage.getByText(/set-password\?token=/i)).toBeVisible()
+      // Setup URL is shown so the admin can distribute it manually
+      await expect(adminPage.getByText(/set-password\?token=/i)).toBeVisible()
 
-    // Success variant must NOT appear
-    await expect(
-      adminPage.getByText("An onboarding invite email has been sent"),
-    ).not.toBeVisible()
+      // Success variant must NOT appear
+      await expect(
+        adminPage.getByText("An onboarding invite email has been sent"),
+      ).not.toBeVisible()
 
-    // User was still created in DB despite email failure
-    const user = await prisma.user.findUnique({ where: { email: testEmail } })
-    expect(user).not.toBeNull()
-    expect(user?.mustChangePassword).toBe(true)
-
-    // Cleanup
-    if (user) {
-      await prisma.user.delete({ where: { id: user.id } })
+      // User was still created in DB despite email failure
+      const user = await prisma.user.findUnique({ where: { email: testEmail } })
+      expect(user).not.toBeNull()
+      expect(user?.mustChangePassword).toBe(true)
+    } finally {
+      // Always clean up the test user, even if an assertion above failed.
+      await prisma.user.deleteMany({ where: { email: testEmail } }).catch(() => {})
     }
   })
 
