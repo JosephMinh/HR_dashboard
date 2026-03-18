@@ -24,12 +24,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { JOBS_MISSING_FILTER_SENTINEL } from '@/lib/query-keys'
-import { JOB_STATUS, JOB_PRIORITY, PIPELINE_HEALTH } from '@/lib/status-config'
+import {
+  JOB_FILTER_MISSING_VALUE,
+  JOB_VISIBLE_ENUM_FILTER_DEFINITIONS,
+  JOB_VISIBLE_FILTER_FIELDS,
+  JOB_VISIBLE_SERVER_FILTER_DEFINITIONS,
+  type JobFilterOption,
+  type JobVisibleFilterField,
+} from '@/lib/job-filter-constants'
 import { cn } from '@/lib/utils'
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useJobsQuery, useJobFilterOptionsQuery } from '@/hooks/queries'
-import type { JobFilterOption } from '@/hooks/queries'
 
 const ITEMS_PER_PAGE = 20
 
@@ -41,16 +46,10 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Filter state from URL params
-  const status = searchParams.get('status') || ''
-  const pipelineHealth = searchParams.get('pipelineHealth') || ''
-  const priority = searchParams.get('priority') || ''
-  const department = searchParams.get('department') || ''
-  const employeeType = searchParams.get('employeeType') || ''
-  const location = searchParams.get('location') || ''
-  const recruiterOwner = searchParams.get('recruiterOwner') || ''
-  const functionalPriority = searchParams.get('functionalPriority') || ''
-  const corporatePriority = searchParams.get('corporatePriority') || ''
+  const filterValues = Object.fromEntries(
+    JOB_VISIBLE_FILTER_FIELDS.map((field) => [field, searchParams.get(field) || '']),
+  ) as Record<JobVisibleFilterField, string>
+
   const search = searchParams.get('search') || ''
   const sort = searchParams.get('sort') || 'updatedAt'
   const order = (searchParams.get('order') || 'desc') as 'asc' | 'desc'
@@ -62,15 +61,15 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
 
   // Use TanStack Query for data fetching
   const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useJobsQuery({
-    status: status || undefined,
-    pipelineHealth: pipelineHealth || undefined,
-    priority: priority || undefined,
-    department: department || undefined,
-    employeeType: employeeType || undefined,
-    location: location || undefined,
-    recruiterOwner: recruiterOwner || undefined,
-    functionalPriority: functionalPriority || undefined,
-    corporatePriority: corporatePriority || undefined,
+    status: filterValues.status || undefined,
+    pipelineHealth: filterValues.pipelineHealth || undefined,
+    priority: filterValues.priority || undefined,
+    department: filterValues.department || undefined,
+    employeeType: filterValues.employeeType || undefined,
+    location: filterValues.location || undefined,
+    recruiterOwner: filterValues.recruiterOwner || undefined,
+    functionalPriority: filterValues.functionalPriority || undefined,
+    corporatePriority: filterValues.corporatePriority || undefined,
     search: search || undefined,
     sort,
     order,
@@ -131,7 +130,9 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
     router.push('/jobs')
   }
 
-  const hasFilters = status || pipelineHealth || priority || department || employeeType || location || recruiterOwner || functionalPriority || corporatePriority || search.trim()
+  const hasFilters =
+    JOB_VISIBLE_FILTER_FIELDS.some((field) => Boolean(filterValues[field])) ||
+    Boolean(search.trim())
 
   // Calculate display range for pagination info
   const startIndex = (page - 1) * ITEMS_PER_PAGE
@@ -151,110 +152,27 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
           className="w-72"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={status}
-            onValueChange={(value) => updateParams({ status: value })}
-          >
-            <SelectTrigger className="w-40" aria-label="Filter by status">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All Status</SelectItem>
-              {Object.entries(JOB_STATUS).map(([key, config]) => (
-                <SelectItem key={key} value={key}>
-                  {config.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={priority || 'ALL'}
-            onValueChange={(value) => updateParams({ priority: value === 'ALL' ? '' : value })}
-          >
-            <SelectTrigger className="w-32" aria-label="Filter by priority">
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Jobs</SelectItem>
-              {Object.entries(JOB_PRIORITY).map(([key, config]) => (
-                <SelectItem key={key} value={key}>
-                  {config.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={pipelineHealth}
-            onValueChange={(value) => updateParams({ pipelineHealth: value })}
-          >
-            <SelectTrigger className="w-36" aria-label="Filter by pipeline health">
-              <SelectValue placeholder="Pipeline" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All Pipelines</SelectItem>
-              {Object.entries(PIPELINE_HEALTH).map(([key, config]) => (
-                <SelectItem key={key} value={key}>
-                  {config.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {JOB_VISIBLE_ENUM_FILTER_DEFINITIONS.map((definition) => (
+            <EnumFilterSelect
+              key={definition.field}
+              definition={definition}
+              value={filterValues[definition.field]}
+              onChange={(value) => updateParams({ [definition.field]: value })}
+            />
+          ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <FilterOptionsSelect
-            label="All Departments"
-            ariaLabel="Filter by department"
-            value={department}
-            options={filterOptionsData?.options?.department}
-            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
-            isLoading={isFilterOptionsLoading}
-            onChange={(value) => updateParams({ department: value })}
-          />
-          <FilterOptionsSelect
-            label="All Employee Types"
-            ariaLabel="Filter by employee type"
-            value={employeeType}
-            options={filterOptionsData?.options?.employeeType}
-            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
-            isLoading={isFilterOptionsLoading}
-            onChange={(value) => updateParams({ employeeType: value })}
-          />
-          <FilterOptionsSelect
-            label="All Locations"
-            ariaLabel="Filter by location"
-            value={location}
-            options={filterOptionsData?.options?.location}
-            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
-            isLoading={isFilterOptionsLoading}
-            onChange={(value) => updateParams({ location: value })}
-          />
-          <FilterOptionsSelect
-            label="All Recruiters"
-            ariaLabel="Filter by recruiter"
-            value={recruiterOwner}
-            options={filterOptionsData?.options?.recruiterOwner}
-            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
-            isLoading={isFilterOptionsLoading}
-            onChange={(value) => updateParams({ recruiterOwner: value })}
-          />
-          <FilterOptionsSelect
-            label="All Func. Priority"
-            ariaLabel="Filter by functional priority"
-            value={functionalPriority}
-            options={filterOptionsData?.options?.functionalPriority}
-            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
-            isLoading={isFilterOptionsLoading}
-            onChange={(value) => updateParams({ functionalPriority: value })}
-          />
-          <FilterOptionsSelect
-            label="All Corp. Priority"
-            ariaLabel="Filter by corporate priority"
-            value={corporatePriority}
-            options={filterOptionsData?.options?.corporatePriority}
-            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
-            isLoading={isFilterOptionsLoading}
-            onChange={(value) => updateParams({ corporatePriority: value })}
-          />
+          {JOB_VISIBLE_SERVER_FILTER_DEFINITIONS.map((definition) => (
+            <FilterOptionsSelect
+              key={definition.field}
+              definition={definition}
+              value={filterValues[definition.field]}
+              options={filterOptionsData?.options?.[definition.field]}
+              missingValue={filterOptionsData?.missingValue ?? JOB_FILTER_MISSING_VALUE}
+              isLoading={isFilterOptionsLoading}
+              onChange={(value) => updateParams({ [definition.field]: value })}
+            />
+          ))}
         </div>
       </FilterBar>
 
@@ -386,9 +304,42 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
 // Filter-options dropdown (server-backed)
 // ---------------------------------------------------------------------------
 
+interface EnumFilterSelectProps {
+  definition: (typeof JOB_VISIBLE_ENUM_FILTER_DEFINITIONS)[number]
+  value: string
+  onChange: (value: string) => void
+}
+
+function EnumFilterSelect({
+  definition,
+  value,
+  onChange,
+}: EnumFilterSelectProps) {
+  return (
+    <Select
+      value={value || 'ALL'}
+      onValueChange={(nextValue) => {
+        const normalizedValue = nextValue ?? 'ALL'
+        onChange(normalizedValue === 'ALL' ? '' : normalizedValue)
+      }}
+    >
+      <SelectTrigger className={definition.widthClassName} aria-label={definition.ariaLabel}>
+        <SelectValue placeholder={definition.triggerLabel} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="ALL">{definition.allLabel}</SelectItem>
+        {definition.options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 interface FilterOptionsSelectProps {
-  label: string
-  ariaLabel: string
+  definition: (typeof JOB_VISIBLE_SERVER_FILTER_DEFINITIONS)[number]
   value: string
   options: JobFilterOption[] | undefined
   missingValue: string
@@ -397,8 +348,7 @@ interface FilterOptionsSelectProps {
 }
 
 function FilterOptionsSelect({
-  label,
-  ariaLabel,
+  definition,
   value,
   options,
   missingValue,
@@ -413,6 +363,7 @@ function FilterOptionsSelect({
     Boolean(value) &&
     !normalizedOptions.some((opt) => opt.value === value)
 
+  const label = definition.allLabel
   const placeholder = isLoading ? 'Loading...' : label
 
   return (
@@ -424,7 +375,7 @@ function FilterOptionsSelect({
       }}
       disabled={isLoading && !value}
     >
-      <SelectTrigger className="w-44" aria-label={ariaLabel}>
+      <SelectTrigger className={definition.widthClassName} aria-label={definition.ariaLabel}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
