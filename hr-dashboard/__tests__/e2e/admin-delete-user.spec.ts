@@ -282,6 +282,11 @@ test.describe("Deactivate and Reactivate User", () => {
       await dialog.getByRole("button", { name: /save changes/i }).click()
       await expect(dialog).not.toBeVisible({ timeout: 10_000 })
 
+      // Switch to "All" filter — default is active-only, so the deactivated user
+      // would otherwise disappear from the list before we can check the badge
+      await adminPage.selectOption('select', 'all')
+      await adminPage.waitForTimeout(500)
+
       // Row should show "Inactive" badge
       await expect(userRow.getByText("Inactive")).toBeVisible({ timeout: 10_000 })
 

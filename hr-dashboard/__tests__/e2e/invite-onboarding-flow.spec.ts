@@ -256,7 +256,7 @@ test.describe("Admin Reset Password Flow", () => {
     const testEmail = `e2e-reset-pw-${Date.now()}@hrtest.local`
     const originalPassword = STRONG_PASSWORD
     const newPassword = "UpdatedP@ss456!"
-    const passwordHash = (await import("bcryptjs").then((m) => m.hash(originalPassword, 4)))
+    const passwordHash = await hash(originalPassword, 10)
 
     // Seed a fully-onboarded user (no pending setup)
     const testUser = await prisma.user.create({
