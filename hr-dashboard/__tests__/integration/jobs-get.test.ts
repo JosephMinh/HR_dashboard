@@ -107,6 +107,42 @@ describe("Integration: GET /api/jobs", () => {
     expect(data.jobs[0].id).toBe(remoteJob.id)
   })
 
+  it("supports repeated location params for comma-bearing values", async () => {
+    const chicagoJob = await factories.createJob({
+      title: "Chicago Role",
+      department: "Finance",
+      status: "OPEN",
+      location: "Chicago, IL",
+    })
+    const remoteJob = await factories.createJob({
+      title: "Remote Role",
+      department: "Finance",
+      status: "OPEN",
+      location: "Remote",
+    })
+    await factories.createJob({
+      title: "Austin Role",
+      department: "Finance",
+      status: "OPEN",
+      location: "Austin",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?location=Chicago%2C%20IL&location=Remote",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    const ids = data.jobs.map((job: { id: string }) => job.id)
+
+    expect(data.total).toBe(2)
+    expect(ids).toContain(chicagoJob.id)
+    expect(ids).toContain(remoteJob.id)
+  })
+
   it("filters correctly by recruiterOwner", async () => {
     const recruiterJob = await factories.createJob({
       title: "Recruiter Owned Role",

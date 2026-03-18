@@ -54,6 +54,9 @@ interface ErrorResponseBody {
   fieldErrors?: Record<string, string | string[]>
 }
 
+type QueryParamScalar = string | number | boolean
+type QueryParamValue = QueryParamScalar | QueryParamScalar[] | null | undefined
+
 /**
  * Base fetch wrapper with error handling
  */
@@ -157,14 +160,18 @@ export const api = {
 /**
  * Build URL with query parameters
  */
-export function buildUrl(base: string, params?: Record<string, string | number | boolean | null | undefined>): string {
+export function buildUrl(base: string, params?: Record<string, QueryParamValue>): string {
   if (!params) return base
 
   const searchParams = new URLSearchParams()
 
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== null && value !== undefined && value !== '') {
-      searchParams.set(key, String(value))
+  for (const [key, rawValue] of Object.entries(params)) {
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue]
+
+    for (const value of values) {
+      if (value !== null && value !== undefined && value !== '') {
+        searchParams.append(key, String(value))
+      }
     }
   }
 

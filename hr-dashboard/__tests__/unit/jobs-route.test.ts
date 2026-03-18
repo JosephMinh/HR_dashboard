@@ -160,6 +160,90 @@ describe("GET /api/jobs", () => {
       }),
     )
   })
+
+  it("applies the new nullable string filters as exact matches", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "user-1", role: "RECRUITER" },
+    })
+    findManyMock.mockResolvedValue([])
+    countMock.mockResolvedValue(0)
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?location=Remote&recruiterOwner=Alex%20Recruiter&functionalPriority=Horizon%202&corporatePriority=Program",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    expect(countMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            { location: "Remote" },
+            { recruiterOwner: "Alex Recruiter" },
+            { functionalPriority: "Horizon 2" },
+            { corporatePriority: "Program" },
+          ],
+        }),
+      }),
+    )
+  })
+
+  it("parses repeated categorical params without splitting comma-bearing values", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "user-1", role: "RECRUITER" },
+    })
+    findManyMock.mockResolvedValue([])
+    countMock.mockResolvedValue(0)
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?status=OPEN&status=OFFER&department=Engineering&department=Product%20Ops&location=Chicago%2C%20IL&location=Remote",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    expect(countMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ["OPEN", "OFFER"] },
+          department: { in: ["Engineering", "Product Ops"] },
+          AND: [
+            { location: { in: ["Chicago, IL", "Remote"] } },
+          ],
+        }),
+      }),
+    )
+  })
+
+  it("maps the missing-value token to null-or-empty predicates", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "user-1", role: "RECRUITER" },
+    })
+    findManyMock.mockResolvedValue([])
+    countMock.mockResolvedValue(0)
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?location=__MISSING__&recruiterOwner=__MISSING__",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    expect(countMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            { OR: [{ location: null }, { location: "" }] },
+            { OR: [{ recruiterOwner: null }, { recruiterOwner: "" }] },
+          ],
+        }),
+      }),
+    )
+  })
 })
 
 describe("POST /api/jobs", () => {
@@ -219,7 +303,7 @@ describe("POST /api/jobs", () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({
-      error: "Pipeline health is required for active recruiting jobs",
+      error: "Pipeline health is required for open jobs",
     })
     expect(createMock).not.toHaveBeenCalled()
   })

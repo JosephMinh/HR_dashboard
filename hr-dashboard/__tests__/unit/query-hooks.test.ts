@@ -9,7 +9,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { queryKeys } from '@/lib/query-keys'
+import {
+  JOBS_MISSING_FILTER_SENTINEL,
+  queryCachePolicy,
+  queryKeys,
+} from '@/lib/query-keys'
 
 describe('queryKeys factory', () => {
   describe('jobs', () => {
@@ -32,16 +36,48 @@ describe('queryKeys factory', () => {
       expect(queryKeys.jobs.list(filters)).toEqual(['jobs', 'list', filters])
     })
 
+    it('includes the expanded jobs filter contract in list keys', () => {
+      const filters = {
+        department: ['Engineering', JOBS_MISSING_FILTER_SENTINEL],
+        employeeType: 'Full Time',
+        location: 'Remote',
+        recruiterOwner: JOBS_MISSING_FILTER_SENTINEL,
+        functionalPriority: 'P1',
+        corporatePriority: 'Program',
+        function: 'Platform',
+        level: 'L5',
+        horizon: '2026',
+        asset: 'Core',
+      }
+
+      expect(queryKeys.jobs.list(filters)).toEqual(['jobs', 'list', filters])
+    })
+
+    it('normalizes multi-value jobs filters for deterministic cache keys', () => {
+      const left = queryKeys.jobs.list({
+        department: ['__MISSING__', 'Engineering', 'Remote'],
+        location: ['Remote', 'Chicago, IL'],
+      })
+      const right = queryKeys.jobs.list({
+        department: ['Remote', 'Engineering', '__MISSING__'],
+        location: ['Chicago, IL', 'Remote'],
+      })
+
+      expect(left).toEqual(right)
+      expect(left[2]).toEqual({
+        department: ['Engineering', 'Remote', '__MISSING__'],
+        location: ['Chicago, IL', 'Remote'],
+      })
+    })
+
     it('returns detail key with id', () => {
       expect(queryKeys.jobs.detail('abc-123')).toEqual(['jobs', 'detail', 'abc-123'])
     })
 
-    it('maintains filter object reference in list key', () => {
-      const filters = { status: 'OPEN' }
-      const key1 = queryKeys.jobs.list(filters)
-      const key2 = queryKeys.jobs.list(filters)
-      expect(key1[2]).toBe(key2[2])
+    it('returns filter-options key', () => {
+      expect(queryKeys.jobs.filterOptions()).toEqual(['jobs', 'filterOptions'])
     })
+
   })
 
   describe('candidates', () => {
@@ -116,6 +152,7 @@ describe('queryKeys factory', () => {
 // Mock QueryClient for mutation invalidation tests
 const mockInvalidateQueries = vi.fn()
 const mockRemoveQueries = vi.fn()
+const mockUseQuery = vi.fn((options: unknown) => options)
 const mockQueryClient = {
   invalidateQueries: mockInvalidateQueries,
   removeQueries: mockRemoveQueries,
@@ -125,6 +162,7 @@ vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual('@tanstack/react-query')
   return {
     ...actual,
+    useQuery: mockUseQuery,
     useQueryClient: () => mockQueryClient,
     useMutation: vi.fn((options: { mutationFn: (arg: unknown) => Promise<unknown>; onSuccess?: (data: unknown, variables: unknown) => void }) => ({
       mutateAsync: async (input: unknown) => {
@@ -142,16 +180,39 @@ vi.mock('@tanstack/react-query', async () => {
 
 vi.mock('@/lib/api-client', () => ({
   api: {
+    get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
   },
+  buildUrl: (
+    base: string,
+    params?: Record<string, string | number | boolean | Array<string | number | boolean> | null | undefined>,
+  ) => {
+    if (!params) return base
+
+    const searchParams = new URLSearchParams()
+    for (const [key, rawValue] of Object.entries(params)) {
+      const values = Array.isArray(rawValue) ? rawValue : [rawValue]
+
+      for (const value of values) {
+        if (value !== null && value !== undefined && value !== '') {
+          searchParams.append(key, String(value))
+        }
+      }
+    }
+
+    const queryString = searchParams.toString()
+    return queryString ? `${base}?${queryString}` : base
+  },
+  createRetryPolicy: vi.fn(() => vi.fn()),
 }))
 
 describe('mutation invalidation patterns', () => {
   beforeEach(() => {
     mockInvalidateQueries.mockClear()
     mockRemoveQueries.mockClear()
+    mockUseQuery.mockClear()
   })
 
   afterEach(() => {
@@ -343,5 +404,99 @@ describe('mutation invalidation patterns', () => {
         }),
       )
     })
+  })
+})
+
+describe('jobs query hooks', () => {
+  beforeEach(() => {
+    mockUseQuery.mockClear()
+  })
+
+  it('useJobsQuery forwards the full jobs filter contract into the request URL', async () => {
+    const { api } = await import('@/lib/api-client')
+    vi.mocked(api.get).mockResolvedValueOnce({
+      jobs: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 0,
+    })
+
+    const { useJobsQuery } = await import('@/hooks/queries/use-jobs')
+    const filters = {
+      status: 'OPEN',
+      department: ['Engineering', JOBS_MISSING_FILTER_SENTINEL],
+      employeeType: 'Full Time',
+      location: ['Remote', 'Chicago, IL'],
+      recruiterOwner: 'Jane Recruiter',
+      functionalPriority: 'P1',
+      corporatePriority: 'Program',
+      function: 'Engineering',
+      level: 'L5',
+      pipelineHealth: 'AHEAD',
+      priority: 'HIGH',
+      horizon: '2026',
+      asset: 'Core',
+      search: 'platform',
+      sort: 'updatedAt',
+      order: 'desc' as const,
+      page: 2,
+      limit: 50,
+      includeCount: true,
+    }
+
+    const query = useJobsQuery(filters) as unknown as {
+      queryKey: unknown
+      queryFn: () => Promise<unknown>
+      staleTime: number
+    }
+    expect(query.queryKey).toEqual(queryKeys.jobs.list(filters))
+
+    await query.queryFn()
+
+    expect(api.get).toHaveBeenCalledWith(
+      '/api/jobs?status=OPEN&department=Engineering&department=__MISSING__&pipelineHealth=AHEAD&priority=HIGH&horizon=2026&employeeType=Full+Time&function=Engineering&level=L5&asset=Core&location=Chicago%2C+IL&location=Remote&recruiterOwner=Jane+Recruiter&functionalPriority=P1&corporatePriority=Program&search=platform&sort=updatedAt&order=desc&page=2&pageSize=50&includeCount=true',
+    )
+    expect(query.staleTime).toBe(queryCachePolicy.jobs.list.staleTime)
+  })
+
+  it('useJobFilterOptionsQuery targets the consolidated endpoint with the long-lived cache policy', async () => {
+    const { api } = await import('@/lib/api-client')
+    vi.mocked(api.get).mockResolvedValueOnce({
+      filters: {
+        department: [],
+        employeeType: [],
+        location: [],
+        recruiterOwner: [],
+        functionalPriority: [],
+        corporatePriority: [],
+        function: [],
+        level: [],
+        horizon: [],
+        asset: [],
+      },
+      meta: {
+        missing: {
+          label: 'Missing',
+          placement: 'last',
+        },
+      },
+    })
+
+    const { useJobFilterOptionsQuery } = await import('@/hooks/queries/use-jobs')
+    const query = useJobFilterOptionsQuery() as unknown as {
+      queryKey: unknown
+      queryFn: () => Promise<unknown>
+      staleTime: number
+      gcTime: number
+    }
+
+    expect(query.queryKey).toEqual(queryKeys.jobs.filterOptions())
+
+    await query.queryFn()
+
+    expect(api.get).toHaveBeenCalledWith('/api/jobs/filter-options')
+    expect(query.staleTime).toBe(queryCachePolicy.jobs.filterOptions.staleTime)
+    expect(query.gcTime).toBe(queryCachePolicy.jobs.filterOptions.gcTime)
   })
 })

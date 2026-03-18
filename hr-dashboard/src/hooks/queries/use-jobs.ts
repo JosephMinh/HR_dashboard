@@ -7,33 +7,22 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api, buildUrl, createRetryPolicy } from '@/lib/api-client'
 import {
+  JOB_FILTER_MISSING_VALUE,
+  type JobFilterField,
+  type JobFilterOption,
+} from '@/lib/job-filter-constants'
+import {
   queryCachePolicy,
   queryKeys,
-  JOBS_MISSING_FILTER_SENTINEL,
+  normalizeJobsFilterParam,
   type JobsFilterParam,
   type JobsFilters,
 } from '@/lib/query-keys'
 
-export type JobFilterField =
-  | 'department'
-  | 'employeeType'
-  | 'location'
-  | 'recruiterOwner'
-  | 'functionalPriority'
-  | 'corporatePriority'
-  | 'function'
-  | 'level'
-  | 'horizon'
-  | 'asset'
-
-export interface JobFilterOption {
-  label: string
-  value: string
-  isMissing: boolean
-}
+export type { JobFilterField, JobFilterOption }
 
 export interface JobFilterOptionsResponse {
-  missingValue: typeof JOBS_MISSING_FILTER_SENTINEL
+  missingValue: typeof JOB_FILTER_MISSING_VALUE
   options: Record<JobFilterField, JobFilterOption[]>
 }
 
@@ -109,16 +98,10 @@ export interface UpdateJobInput extends Partial<CreateJobInput> {
   id: string
 }
 
-function serializeJobsFilterParam(value?: JobsFilterParam): string | undefined {
-  if (value === undefined) {
-    return undefined
-  }
-
-  const values = (Array.isArray(value) ? value : [value])
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-
-  return values.length > 0 ? values.join(',') : undefined
+function serializeJobsFilterParam(
+  value?: JobsFilterParam,
+): JobsFilterParam | undefined {
+  return normalizeJobsFilterParam(value)
 }
 
 /**

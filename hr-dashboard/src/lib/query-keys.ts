@@ -8,8 +8,10 @@
  * Structure: [scope, type, ...params]
  */
 
+import { JOB_FILTER_FIELDS, JOB_FILTER_MISSING_VALUE } from './job-filter-constants'
+
 // Types for filter parameters
-export const JOBS_MISSING_FILTER_SENTINEL = '__MISSING__' as const
+export const JOBS_MISSING_FILTER_SENTINEL = JOB_FILTER_MISSING_VALUE
 
 export type JobsFilterParam = string | string[]
 
@@ -79,6 +81,64 @@ export interface HeadcountFilters {
 
 export interface DashboardFilters {
   timeRange?: string
+}
+
+const JOBS_MULTI_VALUE_FILTER_KEYS = JOB_FILTER_FIELDS satisfies readonly (keyof JobsFilters)[]
+
+function compareJobsFilterValues(left: string, right: string): number {
+  if (left === JOBS_MISSING_FILTER_SENTINEL && right !== JOBS_MISSING_FILTER_SENTINEL) {
+    return 1
+  }
+
+  if (right === JOBS_MISSING_FILTER_SENTINEL && left !== JOBS_MISSING_FILTER_SENTINEL) {
+    return -1
+  }
+
+  return left.localeCompare(right, undefined, {
+    sensitivity: 'base',
+    numeric: true,
+  })
+}
+
+export function normalizeJobsFilterParam(
+  value?: JobsFilterParam,
+): JobsFilterParam | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (Array.isArray(value)) {
+    const normalizedValues = [...new Set(
+      value
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    )].sort(compareJobsFilterValues)
+
+    if (normalizedValues.length === 0) {
+      return undefined
+    }
+
+    return normalizedValues.length === 1 ? normalizedValues[0] : normalizedValues
+  }
+
+  const normalizedValue = value.trim()
+  return normalizedValue.length > 0 ? normalizedValue : undefined
+}
+
+function normalizeJobsFilters(filters: JobsFilters): JobsFilters {
+  const normalizedFilters: JobsFilters = { ...filters }
+
+  for (const key of JOBS_MULTI_VALUE_FILTER_KEYS) {
+    const normalizedValue = normalizeJobsFilterParam(filters[key])
+    if (normalizedValue === undefined) {
+      delete normalizedFilters[key]
+      continue
+    }
+
+    normalizedFilters[key] = normalizedValue
+  }
+
+  return normalizedFilters
 }
 
 interface CachePolicy {
@@ -169,7 +229,7 @@ export const queryKeys = {
     lists: () => [...queryKeys.jobs.all, 'list'] as const,
     list: (filters?: JobsFilters) =>
       filters
-        ? ([...queryKeys.jobs.lists(), filters] as const)
+        ? ([...queryKeys.jobs.lists(), normalizeJobsFilters(filters)] as const)
         : queryKeys.jobs.lists(),
     details: () => [...queryKeys.jobs.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.jobs.details(), id] as const,

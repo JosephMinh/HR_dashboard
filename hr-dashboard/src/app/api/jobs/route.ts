@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getClientIp, logAuditCreate } from '@/lib/audit'
+import { JOB_FILTER_MISSING_VALUE } from '@/lib/job-filter-constants'
 import { prisma } from '@/lib/prisma'
 import { AuthorizationError, requireMutate } from '@/lib/permissions'
 import { JobStatus, JobPriority, PipelineHealth, ApplicationStage } from '@/generated/prisma/client'
@@ -11,7 +12,7 @@ const INACTIVE_STAGES: ApplicationStage[] = [
   ApplicationStage.WITHDRAWN,
 ]
 
-const MISSING_FILTER_TOKEN = '__MISSING__'
+const MISSING_FILTER_TOKEN = JOB_FILTER_MISSING_VALUE
 
 type SortField = 'title' | 'status' | 'targetFillDate' | 'updatedAt' | 'department' | 'openedAt' | 'horizon' | 'function' | 'level' | 'employeeType'
 type SortOrder = 'asc' | 'desc'
@@ -28,13 +29,12 @@ function isTargetBeforeOpened(openedAt: Date | null | undefined, targetFillDate:
   return targetFillDate.getTime() < openedAt.getTime()
 }
 
-function parseCsvParam(param: string | null): string[] {
-  if (!param) {
-    return []
-  }
-
-  return param
-    .split(',')
+function getRepeatedParamValues(
+  searchParams: URLSearchParams,
+  key: string,
+): string[] {
+  return searchParams
+    .getAll(key)
     .map((value) => value.trim())
     .filter(Boolean)
 }
@@ -58,9 +58,8 @@ function fieldMissing(field: NullableStringJobField): Prisma.JobWhereInput {
 
 function buildNullableStringFieldFilter(
   field: NullableStringJobField,
-  param: string | null,
+  values: string[],
 ): Prisma.JobWhereInput | null {
-  const values = parseCsvParam(param)
   if (values.length === 0) {
     return null
   }
@@ -123,21 +122,21 @@ export async function GET(request: NextRequest) {
   }
 
   // Parse query parameters
-  const statusParam = searchParams.get('status')
-  const departmentParam = searchParams.get('department')
-  const pipelineHealthParam = searchParams.get('pipelineHealth')
+  const statusValues = getRepeatedParamValues(searchParams, 'status')
+  const departmentValues = getRepeatedParamValues(searchParams, 'department')
+  const pipelineHealthValues = getRepeatedParamValues(searchParams, 'pipelineHealth')
   const criticalParam = searchParams.get('critical')
-  const priorityParam = searchParams.get('priority')
+  const priorityValues = getRepeatedParamValues(searchParams, 'priority')
   // WFP filter parameters
-  const employeeTypeParam = searchParams.get('employeeType')
-  const functionParam = searchParams.get('function')
-  const levelParam = searchParams.get('level')
-  const horizonParam = searchParams.get('horizon')
-  const assetParam = searchParams.get('asset')
-  const locationParam = searchParams.get('location')
-  const recruiterOwnerParam = searchParams.get('recruiterOwner')
-  const functionalPriorityParam = searchParams.get('functionalPriority')
-  const corporatePriorityParam = searchParams.get('corporatePriority')
+  const employeeTypeValues = getRepeatedParamValues(searchParams, 'employeeType')
+  const functionValues = getRepeatedParamValues(searchParams, 'function')
+  const levelValues = getRepeatedParamValues(searchParams, 'level')
+  const horizonValues = getRepeatedParamValues(searchParams, 'horizon')
+  const assetValues = getRepeatedParamValues(searchParams, 'asset')
+  const locationValues = getRepeatedParamValues(searchParams, 'location')
+  const recruiterOwnerValues = getRepeatedParamValues(searchParams, 'recruiterOwner')
+  const functionalPriorityValues = getRepeatedParamValues(searchParams, 'functionalPriority')
+  const corporatePriorityValues = getRepeatedParamValues(searchParams, 'corporatePriority')
   // Limit search length to prevent performance issues with very long queries
   const search = searchParams.get('search')?.slice(0, 200) ?? null
   const sortParam = searchParams.get('sort') as SortField | null
@@ -180,8 +179,8 @@ export async function GET(request: NextRequest) {
   const where: Prisma.JobWhereInput = {}
   const andConditions: Prisma.JobWhereInput[] = []
 
-  if (statusParam) {
-    const statuses = statusParam.split(',').filter(s =>
+  if (statusValues.length > 0) {
+    const statuses = statusValues.filter(s =>
       Object.values(JobStatus).includes(s as JobStatus)
     ) as JobStatus[]
     if (statuses.length === 1) {
@@ -191,17 +190,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  if (departmentParam) {
-    const departments = departmentParam.split(',').map((value) => value.trim()).filter(Boolean)
-    if (departments.length === 1) {
-      where.department = departments[0]
-    } else if (departments.length > 1) {
-      where.department = { in: departments }
-    }
+  if (departmentValues.length === 1) {
+    where.department = departmentValues[0]
+  } else if (departmentValues.length > 1) {
+    where.department = { in: departmentValues }
   }
 
-  if (pipelineHealthParam) {
-    const healthValues = pipelineHealthParam.split(',').filter(h =>
+  if (pipelineHealthValues.length > 0) {
+    const healthValues = pipelineHealthValues.filter(h =>
       Object.values(PipelineHealth).includes(h as PipelineHealth)
     ) as PipelineHealth[]
     if (healthValues.length === 1) {
@@ -215,8 +211,8 @@ export async function GET(request: NextRequest) {
     where.isCritical = true
   }
 
-  if (priorityParam) {
-    const priorities = priorityParam.split(',').filter(p =>
+  if (priorityValues.length > 0) {
+    const priorities = priorityValues.filter(p =>
       Object.values(JobPriority).includes(p as JobPriority)
     ) as JobPriority[]
     if (priorities.length === 1) {
@@ -227,56 +223,41 @@ export async function GET(request: NextRequest) {
   }
 
   // WFP filters
-  if (employeeTypeParam) {
-    const values = employeeTypeParam.split(',').map(v => v.trim()).filter(Boolean)
-    if (values.length === 1) {
-      where.employeeType = values[0]
-    } else if (values.length > 1) {
-      where.employeeType = { in: values }
-    }
+  if (employeeTypeValues.length === 1) {
+    where.employeeType = employeeTypeValues[0]
+  } else if (employeeTypeValues.length > 1) {
+    where.employeeType = { in: employeeTypeValues }
   }
 
-  if (functionParam) {
-    const values = functionParam.split(',').map(v => v.trim()).filter(Boolean)
-    if (values.length === 1) {
-      where.function = values[0]
-    } else if (values.length > 1) {
-      where.function = { in: values }
-    }
+  if (functionValues.length === 1) {
+    where.function = functionValues[0]
+  } else if (functionValues.length > 1) {
+    where.function = { in: functionValues }
   }
 
-  if (levelParam) {
-    const values = levelParam.split(',').map(v => v.trim()).filter(Boolean)
-    if (values.length === 1) {
-      where.level = values[0]
-    } else if (values.length > 1) {
-      where.level = { in: values }
-    }
+  if (levelValues.length === 1) {
+    where.level = levelValues[0]
+  } else if (levelValues.length > 1) {
+    where.level = { in: levelValues }
   }
 
-  if (horizonParam) {
-    const values = horizonParam.split(',').map(v => v.trim()).filter(Boolean)
-    if (values.length === 1) {
-      where.horizon = values[0]
-    } else if (values.length > 1) {
-      where.horizon = { in: values }
-    }
+  if (horizonValues.length === 1) {
+    where.horizon = horizonValues[0]
+  } else if (horizonValues.length > 1) {
+    where.horizon = { in: horizonValues }
   }
 
-  if (assetParam) {
-    const values = assetParam.split(',').map(v => v.trim()).filter(Boolean)
-    if (values.length === 1) {
-      where.asset = values[0]
-    } else if (values.length > 1) {
-      where.asset = { in: values }
-    }
+  if (assetValues.length === 1) {
+    where.asset = assetValues[0]
+  } else if (assetValues.length > 1) {
+    where.asset = { in: assetValues }
   }
 
-  const nullableFilters: Array<[NullableStringJobField, string | null]> = [
-    ['location', locationParam],
-    ['recruiterOwner', recruiterOwnerParam],
-    ['functionalPriority', functionalPriorityParam],
-    ['corporatePriority', corporatePriorityParam],
+  const nullableFilters: Array<[NullableStringJobField, string[]]> = [
+    ['location', locationValues],
+    ['recruiterOwner', recruiterOwnerValues],
+    ['functionalPriority', functionalPriorityValues],
+    ['corporatePriority', corporatePriorityValues],
   ]
 
   for (const [field, param] of nullableFilters) {
