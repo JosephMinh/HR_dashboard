@@ -21,108 +21,62 @@ vi.mock('@/hooks/queries', () => ({
   useJobFilterOptionsQuery: () => useJobFilterOptionsQueryMock(),
 }))
 
-vi.mock('@/components/ui/select', async () => {
+interface MockOption {
+  value: string
+  label: string
+  isMissing: boolean
+}
+
+vi.mock('@/components/ui/checkbox-filter-popover', async () => {
   const React = await import('react')
 
-  type SelectItemShape = {
-    label: string
-    value: string
-  }
-
-  const extractText = (node: React.ReactNode): string => {
-    if (typeof node === 'string' || typeof node === 'number') {
-      return String(node)
-    }
-
-    if (Array.isArray(node)) {
-      return node.map(extractText).join('')
-    }
-
-    if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
-      return extractText(node.props.children)
-    }
-
-    return ''
-  }
-
-  const collectSelectMetadata = (
-    node: React.ReactNode,
-    state: { ariaLabel?: string; items: SelectItemShape[] }
-  ) => {
-    React.Children.forEach(node, (child) => {
-      if (!React.isValidElement<{ children?: React.ReactNode; value?: string; 'aria-label'?: string }>(child)) {
-        return
-      }
-
-      const type = child.type as { __mockSelectPart?: string }
-      if (type.__mockSelectPart === 'trigger') {
-        state.ariaLabel = child.props['aria-label']
-      }
-
-      if (type.__mockSelectPart === 'item' && child.props.value !== undefined) {
-        state.items.push({
-          value: child.props.value,
-          label: extractText(child.props.children),
-        })
-      }
-
-      collectSelectMetadata(child.props.children, state)
-    })
-  }
-
-  const createPart = (part: string) => {
-    const Component = ({ children }: { children?: React.ReactNode }) => <>{children}</>
-    ;(Component as { __mockSelectPart?: string }).__mockSelectPart = part
-    return Component
-  }
-
-  const SelectTrigger = createPart('trigger')
-  const SelectContent = createPart('content')
-  const SelectValue = createPart('value')
-  const SelectItem = createPart('item') as unknown as ({
-    children,
-    value,
-  }: {
-    children?: React.ReactNode
-    value: string
-  }) => JSX.Element
-
-  const Select = ({
-    value,
-    onValueChange,
-    disabled,
-    children,
-  }: {
-    value?: string
-    onValueChange?: (nextValue: string) => void
-    disabled?: boolean
-    children?: React.ReactNode
-  }) => {
-    const state: { ariaLabel?: string; items: SelectItemShape[] } = { items: [] }
-    collectSelectMetadata(children, state)
-
-    return (
-      <select
-        aria-label={state.ariaLabel}
-        disabled={disabled}
-        value={value}
-        onChange={(event) => onValueChange?.(event.target.value)}
-      >
-        {state.items.map((item) => (
-          <option key={item.value} value={item.value}>
-            {item.label}
-          </option>
-        ))}
-      </select>
-    )
-  }
-
   return {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+    CheckboxFilterPopover: ({
+      options,
+      selected,
+      onChange,
+      ariaLabel,
+      missingValue = '__MISSING__',
+    }: {
+      options: MockOption[]
+      selected: string[]
+      onChange: (values: string[]) => void
+      ariaLabel: string
+      widthClassName?: string
+      missingValue?: string
+    }) => {
+      const knownValues = new Set(options.map((o) => o.value))
+      const unknowns = selected
+        .filter((v) => !knownValues.has(v))
+        .map((v) => ({
+          value: v,
+          label: v === missingValue ? 'Not Set' : `${v} (Unavailable)`,
+          isMissing: v === missingValue,
+        }))
+      const allOptions = [...options, ...unknowns]
+
+      return (
+        <div aria-label={ariaLabel} role="group">
+          {allOptions.map((option) => (
+            <label key={option.value}>
+              <input
+                type="checkbox"
+                checked={selected.includes(option.value)}
+                onChange={() => {
+                  if (selected.includes(option.value)) {
+                    onChange(selected.filter((v) => v !== option.value))
+                  } else {
+                    onChange([...selected, option.value])
+                  }
+                }}
+                value={option.value}
+              />
+              {option.isMissing ? 'Not Set' : option.label}
+            </label>
+          ))}
+        </div>
+      )
+    },
   }
 })
 
@@ -169,27 +123,30 @@ describe('JobsTable filters', () => {
     })
   })
 
-  it('threads new jobs dropdown params from the URL into useJobsQuery', () => {
+  it('threads multi-value filter params from the URL into useJobsQuery', () => {
     currentSearch = 'department=Engineering&employeeType=Full%20Time&location=Remote&recruiterOwner=Jane%20Recruiter&functionalPriority=P1&corporatePriority=Program&page=2'
 
     render(<JobsTable userCanMutate={false} />)
 
     expect(useJobsQueryMock).toHaveBeenCalledWith(expect.objectContaining({
-      department: 'Engineering',
-      employeeType: 'Full Time',
-      location: 'Remote',
-      recruiterOwner: 'Jane Recruiter',
-      functionalPriority: 'P1',
-      corporatePriority: 'Program',
+      department: ['Engineering'],
+      employeeType: ['Full Time'],
+      location: ['Remote'],
+      recruiterOwner: ['Jane Recruiter'],
+      functionalPriority: ['P1'],
+      corporatePriority: ['Program'],
       page: 2,
       limit: 20,
       includeCount: true,
     }))
   })
 
-  it('renders the six new server-backed dropdown controls', () => {
+  it('renders all nine visible checkbox multi-select filter controls', () => {
     render(<JobsTable userCanMutate={false} />)
 
+    expect(screen.getByLabelText('Filter by status')).toBeInTheDocument()
+    expect(screen.getByLabelText('Filter by priority')).toBeInTheDocument()
+    expect(screen.getByLabelText('Filter by pipeline health')).toBeInTheDocument()
     expect(screen.getByLabelText('Filter by department')).toBeInTheDocument()
     expect(screen.getByLabelText('Filter by employee type')).toBeInTheDocument()
     expect(screen.getByLabelText('Filter by location')).toBeInTheDocument()
@@ -198,14 +155,12 @@ describe('JobsTable filters', () => {
     expect(screen.getByLabelText('Filter by corporate priority')).toBeInTheDocument()
   })
 
-  it('resets pagination and updates the URL when a new dropdown value is selected', () => {
+  it('resets pagination and writes repeated params when a checkbox is toggled', () => {
     currentSearch = 'status=OPEN&page=3'
 
     render(<JobsTable userCanMutate={false} />)
 
-    fireEvent.change(screen.getByLabelText('Filter by department'), {
-      target: { value: 'Engineering' },
-    })
+    fireEvent.click(screen.getByLabelText('Engineering'))
 
     expect(replaceMock).toHaveBeenCalledWith('/jobs?status=OPEN&department=Engineering')
   })
@@ -237,44 +192,40 @@ describe('JobsTable filters', () => {
 
     render(<JobsTable userCanMutate={false} />)
 
-    expect(screen.getByRole('option', { name: 'Not Set' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Filter by location')).toHaveValue(JOBS_MISSING_FILTER_SENTINEL)
+    // The "Not Set" checkbox should be rendered and checked
+    expect(screen.getByText('Not Set')).toBeInTheDocument()
+    const notSetCheckbox = screen.getByRole('checkbox', { name: 'Not Set' })
+    expect(notSetCheckbox).toBeChecked()
+
+    // useJobsQuery receives the sentinel as an array element
     expect(useJobsQueryMock).toHaveBeenCalledWith(expect.objectContaining({
-      location: JOBS_MISSING_FILTER_SENTINEL,
-      status: 'OPEN',
+      location: [JOBS_MISSING_FILTER_SENTINEL],
+      status: ['OPEN'],
       page: 3,
     }))
 
-    fireEvent.change(screen.getByLabelText('Filter by location'), {
-      target: { value: JOBS_MISSING_FILTER_SENTINEL },
-    })
-
-    expect(replaceMock).toHaveBeenCalledWith(`/jobs?status=OPEN&location=${JOBS_MISSING_FILTER_SENTINEL}`)
-
-    fireEvent.change(screen.getByLabelText('Filter by location'), {
-      target: { value: 'ALL' },
-    })
-
-    expect(replaceMock).toHaveBeenLastCalledWith('/jobs?status=OPEN')
+    // Unchecking the "Not Set" checkbox removes it from the URL
+    fireEvent.click(notSetCheckbox)
+    expect(replaceMock).toHaveBeenCalledWith('/jobs?status=OPEN')
   })
 
-  it('preserves unavailable deep-linked values so they remain understandable and clearable', () => {
+  it('preserves unavailable deep-linked values so they remain visible and clearable', () => {
     currentSearch = 'status=OPEN&page=4&corporatePriority=Legacy'
 
     render(<JobsTable userCanMutate={false} />)
 
-    expect(screen.getByRole('option', { name: 'Legacy (Unavailable)' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Filter by corporate priority')).toHaveValue('Legacy')
+    expect(screen.getByText('Legacy (Unavailable)')).toBeInTheDocument()
+    const legacyCheckbox = screen.getByRole('checkbox', { name: 'Legacy (Unavailable)' })
+    expect(legacyCheckbox).toBeChecked()
+
     expect(useJobsQueryMock).toHaveBeenCalledWith(expect.objectContaining({
-      corporatePriority: 'Legacy',
-      status: 'OPEN',
+      corporatePriority: ['Legacy'],
+      status: ['OPEN'],
       page: 4,
     }))
 
-    fireEvent.change(screen.getByLabelText('Filter by corporate priority'), {
-      target: { value: 'ALL' },
-    })
-
+    // Unchecking the unavailable value removes it from the URL
+    fireEvent.click(legacyCheckbox)
     expect(replaceMock).toHaveBeenCalledWith('/jobs?status=OPEN')
   })
 
@@ -295,5 +246,142 @@ describe('JobsTable filters', () => {
     fireEvent.click(screen.getByRole('button', { name: /clear all/i }))
 
     expect(pushMock).toHaveBeenCalledWith('/jobs')
+  })
+
+  it('threads multiple selections in the same category to useJobsQuery', () => {
+    currentSearch = 'department=Engineering&department=Sales&location=Remote&location=New%20York'
+
+    useJobFilterOptionsQueryMock.mockReturnValue({
+      data: {
+        missingValue: JOBS_MISSING_FILTER_SENTINEL,
+        options: {
+          department: [
+            { value: 'Engineering', label: 'Engineering', isMissing: false },
+            { value: 'Sales', label: 'Sales', isMissing: false },
+          ],
+          employeeType: [],
+          location: [
+            { value: 'Remote', label: 'Remote', isMissing: false },
+            { value: 'New York', label: 'New York', isMissing: false },
+          ],
+          recruiterOwner: [],
+          functionalPriority: [],
+          corporatePriority: [],
+          function: [],
+          level: [],
+          horizon: [],
+          asset: [],
+        },
+      },
+      isLoading: false,
+    })
+
+    render(<JobsTable userCanMutate={false} />)
+
+    expect(useJobsQueryMock).toHaveBeenCalledWith(expect.objectContaining({
+      department: ['Engineering', 'Sales'],
+      location: ['Remote', 'New York'],
+    }))
+  })
+
+  it('unchecking one value in a multi-select preserves the other values', () => {
+    currentSearch = 'department=Engineering&department=Sales'
+
+    useJobFilterOptionsQueryMock.mockReturnValue({
+      data: {
+        missingValue: JOBS_MISSING_FILTER_SENTINEL,
+        options: {
+          department: [
+            { value: 'Engineering', label: 'Engineering', isMissing: false },
+            { value: 'Sales', label: 'Sales', isMissing: false },
+          ],
+          employeeType: [],
+          location: [],
+          recruiterOwner: [],
+          functionalPriority: [],
+          corporatePriority: [],
+          function: [],
+          level: [],
+          horizon: [],
+          asset: [],
+        },
+      },
+      isLoading: false,
+    })
+
+    render(<JobsTable userCanMutate={false} />)
+
+    // Uncheck "Engineering" — "Sales" should remain
+    const engineeringCheckbox = screen.getByRole('checkbox', { name: 'Engineering' })
+    fireEvent.click(engineeringCheckbox)
+
+    expect(replaceMock).toHaveBeenCalledWith('/jobs?department=Sales')
+  })
+
+  it('all nine filter groups are accessible with their aria-labels', () => {
+    render(<JobsTable userCanMutate={false} />)
+
+    const expectedLabels = [
+      'Filter by status',
+      'Filter by priority',
+      'Filter by pipeline health',
+      'Filter by department',
+      'Filter by employee type',
+      'Filter by location',
+      'Filter by recruiter',
+      'Filter by functional priority',
+      'Filter by corporate priority',
+    ]
+    for (const label of expectedLabels) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('writes enum multi-select params in canonical option order instead of click order', () => {
+    const { rerender } = render(<JobsTable userCanMutate={false} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Offer' }))
+    currentSearch = 'status=OFFER'
+    rerender(<JobsTable userCanMutate={false} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Open' }))
+
+    expect(replaceMock).toHaveBeenLastCalledWith('/jobs?status=OPEN&status=OFFER')
+  })
+
+  it('writes missing-value selections after concrete values for nullable filters', () => {
+    useJobFilterOptionsQueryMock.mockReturnValue({
+      data: {
+        missingValue: JOBS_MISSING_FILTER_SENTINEL,
+        options: {
+          department: [{ value: 'Engineering', label: 'Engineering', isMissing: false }],
+          employeeType: [{ value: 'Full Time', label: 'Full Time', isMissing: false }],
+          location: [
+            { value: 'Remote', label: 'Remote', isMissing: false },
+            { value: JOBS_MISSING_FILTER_SENTINEL, label: 'Missing', isMissing: true },
+          ],
+          recruiterOwner: [{ value: 'Jane Recruiter', label: 'Jane Recruiter', isMissing: false }],
+          functionalPriority: [{ value: 'P1', label: 'P1', isMissing: false }],
+          corporatePriority: [{ value: 'Program', label: 'Program', isMissing: false }],
+          function: [],
+          level: [],
+          horizon: [],
+          asset: [],
+        },
+      },
+      isLoading: false,
+    })
+
+    const { rerender } = render(<JobsTable userCanMutate={false} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Not Set' }))
+    currentSearch = `location=${JOBS_MISSING_FILTER_SENTINEL}`
+    rerender(<JobsTable userCanMutate={false} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Remote' }))
+
+    expect(replaceMock).toHaveBeenLastCalledWith(
+      `/jobs?location=Remote&location=${JOBS_MISSING_FILTER_SENTINEL}`,
+    )
   })
 })
