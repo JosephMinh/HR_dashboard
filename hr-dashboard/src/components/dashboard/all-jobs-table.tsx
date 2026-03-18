@@ -15,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -266,19 +267,21 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>Filter by status</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {Object.entries(JOB_STATUS).map(([key, config]) => (
-              <DropdownMenuCheckboxItem
-                key={key}
-                checked={selectedStatuses.includes(key)}
-                onCheckedChange={() =>
-                  toggleValue(key, setSelectedStatuses)
-                }
-              >
-                {config.label}
-              </DropdownMenuCheckboxItem>
-            ))}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Filter by status</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {Object.entries(JOB_STATUS).map(([key, config]) => (
+                <DropdownMenuCheckboxItem
+                  key={key}
+                  checked={selectedStatuses.includes(key)}
+                  onCheckedChange={() =>
+                    toggleValue(key, setSelectedStatuses)
+                  }
+                >
+                  {config.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -289,25 +292,27 @@ export function AllJobsTable({ userCanMutate }: AllJobsTableProps) {
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel>Filter by department</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {departmentOptions.length === 0 ? (
-              <div className="px-2 py-1 text-sm text-muted-foreground">
-                No departments found
-              </div>
-            ) : (
-              departmentOptions.map((department) => (
-                <DropdownMenuCheckboxItem
-                  key={department}
-                  checked={selectedDepartments.includes(department)}
-                  onCheckedChange={() =>
-                    toggleValue(department, setSelectedDepartments)
-                  }
-                >
-                  {department}
-                </DropdownMenuCheckboxItem>
-              ))
-            )}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Filter by department</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {departmentOptions.length === 0 ? (
+                <div className="px-2 py-1 text-sm text-muted-foreground">
+                  No departments found
+                </div>
+              ) : (
+                departmentOptions.map((department) => (
+                  <DropdownMenuCheckboxItem
+                    key={department}
+                    checked={selectedDepartments.includes(department)}
+                    onCheckedChange={() =>
+                      toggleValue(department, setSelectedDepartments)
+                    }
+                  >
+                    {department}
+                  </DropdownMenuCheckboxItem>
+                ))
+              )}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </FilterBar>
