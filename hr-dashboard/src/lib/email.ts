@@ -146,7 +146,7 @@ function getSenderAddress(): string {
   const cfg = getSmtpConfig()
   // Strip CR/LF, quotes, and backslashes to prevent RFC 5322 header injection.
   const name = (cfg.senderName || 'HR Dashboard').replace(/[\r\n"\\]/g, '')
-  const email = cfg.senderEmail || 'noreply@example.com'
+  const email = (cfg.senderEmail || 'noreply@example.com').replace(/[\r\n]/g, '')
   return `"${name}" <${email}>`
 }
 
@@ -209,8 +209,8 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
 
     const info = await transport.sendMail({
       from: getSenderAddress(),
-      to: payload.to,
-      subject: payload.subject,
+      to: payload.to.replace(/[\r\n]/g, ''),
+      subject: payload.subject.replace(/[\r\n]/g, ''),
       html: payload.html,
       text: payload.text,
     })

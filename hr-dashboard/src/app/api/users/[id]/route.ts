@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { getClientIp, logAuditUpdate } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { canManageUsers } from '@/lib/permissions'
+import { isValidUUID } from '@/lib/validations'
 import { UserRole } from '@/generated/prisma/client'
 
 const VALID_ROLES = Object.values(UserRole) as string[]
@@ -38,6 +39,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const { id } = await params
+
+  // Validate ID format early to avoid unnecessary DB queries
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 })
+  }
 
   const existing = await prisma.user.findUnique({
     where: { id },
@@ -204,6 +210,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { id } = await params
+
+  // Validate ID format early to avoid unnecessary DB queries
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 })
+  }
 
   if (id === session.user.id) {
     return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 403 })

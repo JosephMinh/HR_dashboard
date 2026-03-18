@@ -39,6 +39,7 @@ vi.mock("@/lib/audit", () => ({
 // Mock validations to prevent zod initialization issues during test hoisting
 vi.mock("@/lib/validations", () => ({
   isValidEmail: (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+  isValidUUID: (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id),
 }))
 
 // Mock storage - resume key validation uses regex to match actual behavior
@@ -128,7 +129,7 @@ describe("POST /api/candidates", () => {
     authMock.mockResolvedValue({
       user: { id: "recruiter-1", role: "RECRUITER", name: "Jane Recruiter" },
     })
-    jobFindUniqueMock.mockResolvedValue({ id: "job-1" })
+    jobFindUniqueMock.mockResolvedValue({ id: "00000000-0000-4000-a000-000000000001" })
 
     const now = new Date("2026-03-09T08:40:00.000Z")
     candidateCreateMock.mockResolvedValue({
@@ -158,13 +159,13 @@ describe("POST /api/candidates", () => {
           lastName: "Chen",
           email: "ava.chen@example.com",
           source: "REFERRAL",
-          jobId: "job-1",
+          jobId: "00000000-0000-4000-a000-000000000001",
         }),
       }) as never,
     )
 
     expect(jobFindUniqueMock).toHaveBeenCalledWith({
-      where: { id: "job-1" },
+      where: { id: "00000000-0000-4000-a000-000000000001" },
       select: { id: true },
     })
     expect(candidateCreateMock).toHaveBeenCalledWith({
@@ -179,7 +180,7 @@ describe("POST /api/candidates", () => {
     })
     expect(applicationCreateMock).toHaveBeenCalledWith({
       data: {
-        jobId: "job-1",
+        jobId: "00000000-0000-4000-a000-000000000001",
         candidateId: "cand-100",
         stage: "NEW",
         recruiterOwner: "Jane Recruiter",
@@ -213,15 +214,14 @@ describe("POST /api/candidates", () => {
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
       },
-      linkedJobId: "job-1",
+      linkedJobId: "00000000-0000-4000-a000-000000000001",
     })
   })
 
-  it("returns 400 when linking to an unknown job", async () => {
+  it("returns 400 when linking to an invalid job ID format", async () => {
     authMock.mockResolvedValue({
       user: { id: "admin-1", role: "ADMIN", name: "Admin User" },
     })
-    jobFindUniqueMock.mockResolvedValue(null)
 
     const { POST } = await import("@/app/api/candidates/route")
     const response = await POST(
@@ -231,6 +231,30 @@ describe("POST /api/candidates", () => {
           firstName: "Priya",
           lastName: "Nair",
           jobId: "missing-job",
+        }),
+      }) as never,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: "Invalid job ID format" })
+    expect(jobFindUniqueMock).not.toHaveBeenCalled()
+  })
+
+  it("returns 400 when linking to an unknown job", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "admin-1", role: "ADMIN", name: "Admin User" },
+    })
+    jobFindUniqueMock.mockResolvedValue(null)
+
+    const unknownJobId = "00000000-0000-4000-a000-000000000099"
+    const { POST } = await import("@/app/api/candidates/route")
+    const response = await POST(
+      new Request("http://localhost/api/candidates", {
+        method: "POST",
+        body: JSON.stringify({
+          firstName: "Priya",
+          lastName: "Nair",
+          jobId: unknownJobId,
         }),
       }) as never,
     )

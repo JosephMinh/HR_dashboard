@@ -6,7 +6,7 @@ import { getClientIp, logAuditCreate } from "@/lib/audit"
 import { AuthorizationError, requireMutate } from "@/lib/permissions"
 import { prisma } from "@/lib/prisma"
 import { isValidResumeKey } from "@/lib/storage"
-import { isValidEmail } from "@/lib/validations"
+import { isValidEmail, isValidUUID } from "@/lib/validations"
 
 type SortField = "name" | "email" | "updatedAt"
 type SortOrder = "asc" | "desc"
@@ -327,6 +327,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (jobId) {
+    if (!isValidUUID(jobId)) {
+      return NextResponse.json({ error: "Invalid job ID format" }, { status: 400 })
+    }
     const linkedJob = await prisma.job.findUnique({
       where: { id: jobId },
       select: { id: true },

@@ -24,6 +24,10 @@ describe('rate-limit helpers', () => {
   it('classifies API requests into the expected limiter scopes', () => {
     expect(resolveRateLimitScope('/dashboard', 'GET')).toBeNull()
     expect(resolveRateLimitScope('/api/auth/signin', 'POST')).toBe('auth')
+    expect(resolveRateLimitScope('/api/auth/callback/credentials', 'POST')).toBe('auth')
+    expect(resolveRateLimitScope('/api/auth/session', 'GET')).toBe('read')
+    expect(resolveRateLimitScope('/api/auth/providers', 'GET')).toBe('read')
+    expect(resolveRateLimitScope('/api/auth/error', 'GET')).toBe('read')
     expect(resolveRateLimitScope('/api/upload/resume', 'POST')).toBe('upload')
     expect(resolveRateLimitScope('/api/jobs', 'PATCH')).toBe('write')
     expect(resolveRateLimitScope('/api/jobs', 'GET')).toBe('read')

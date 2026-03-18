@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   // Verify current password
   const isCurrentValid = await compare(currentPassword, user.passwordHash)
   if (!isCurrentValid) {
-    return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 })
+    return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 })
   }
 
   // Reject if new password is the same as current

@@ -18,22 +18,17 @@ export const JOB_FILTER_FIELDS = [
 
 export type JobFilterField = (typeof JOB_FILTER_FIELDS)[number]
 
-export const JOB_FILTER_MISSING_LABEL = "Missing" as const
+export const JOB_FILTER_MISSING_VALUE = "__MISSING__" as const
 
 export type JobFilterOption = {
-  value: string | null
+  value: string
   label: string
   isMissing: boolean
 }
 
 export type JobsFilterOptionsResponse = {
-  filters: Record<JobFilterField, JobFilterOption[]>
-  meta: {
-    missing: {
-      label: typeof JOB_FILTER_MISSING_LABEL
-      placement: "last"
-    }
-  }
+  missingValue: typeof JOB_FILTER_MISSING_VALUE
+  options: Record<JobFilterField, JobFilterOption[]>
 }
 
 function buildFilterOptions(values: Array<string | null>): JobFilterOption[] {
@@ -62,8 +57,8 @@ function buildFilterOptions(values: Array<string | null>): JobFilterOption[] {
 
   if (hasMissingValue) {
     options.push({
-      value: null,
-      label: JOB_FILTER_MISSING_LABEL,
+      value: JOB_FILTER_MISSING_VALUE,
+      label: "Missing",
       isMissing: true,
     })
   }
@@ -162,12 +157,7 @@ export async function GET() {
   )
 
   return NextResponse.json<JobsFilterOptionsResponse>({
-    filters: Object.fromEntries(optionsEntries) as JobsFilterOptionsResponse["filters"],
-    meta: {
-      missing: {
-        label: JOB_FILTER_MISSING_LABEL,
-        placement: "last",
-      },
-    },
+    missingValue: JOB_FILTER_MISSING_VALUE,
+    options: Object.fromEntries(optionsEntries) as JobsFilterOptionsResponse["options"],
   })
 }

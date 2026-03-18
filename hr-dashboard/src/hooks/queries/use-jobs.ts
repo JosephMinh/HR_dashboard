@@ -6,7 +6,36 @@
 
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api, buildUrl, createRetryPolicy } from '@/lib/api-client'
-import { queryCachePolicy, queryKeys, type JobsFilters } from '@/lib/query-keys'
+import {
+  queryCachePolicy,
+  queryKeys,
+  JOBS_MISSING_FILTER_SENTINEL,
+  type JobsFilterParam,
+  type JobsFilters,
+} from '@/lib/query-keys'
+
+export type JobFilterField =
+  | 'department'
+  | 'employeeType'
+  | 'location'
+  | 'recruiterOwner'
+  | 'functionalPriority'
+  | 'corporatePriority'
+  | 'function'
+  | 'level'
+  | 'horizon'
+  | 'asset'
+
+export interface JobFilterOption {
+  label: string
+  value: string
+  isMissing: boolean
+}
+
+export interface JobFilterOptionsResponse {
+  missingValue: typeof JOBS_MISSING_FILTER_SENTINEL
+  options: Record<JobFilterField, JobFilterOption[]>
+}
 
 // Types
 export interface Job {
@@ -26,6 +55,30 @@ export interface Job {
   closedAt: string | null
   createdAt: string
   updatedAt: string
+  importKey?: string | null
+  sourceSheet?: string | null
+  sourceRow?: number | null
+  tempJobId?: number | null
+  employeeType?: string | null
+  function?: string | null
+  level?: string | null
+  horizon?: string | null
+  asset?: string | null
+  keyCapability?: string | null
+  businessRationale?: string | null
+  milestone?: string | null
+  talentAssessment?: string | null
+  functionalPriority?: string | null
+  corporatePriority?: string | null
+  isTradeoff?: boolean
+  recruitingStatus?: string | null
+  fpaLevel?: string | null
+  fpaTiming?: string | null
+  fpaNote?: string | null
+  fpaApproved?: string | null
+  hiredName?: string | null
+  hibobId?: number | null
+  notes?: string | null
   activeCandidateCount?: number
 }
 
@@ -56,6 +109,18 @@ export interface UpdateJobInput extends Partial<CreateJobInput> {
   id: string
 }
 
+function serializeJobsFilterParam(value?: JobsFilterParam): string | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const values = (Array.isArray(value) ? value : [value])
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+
+  return values.length > 0 ? values.join(',') : undefined
+}
+
 /**
  * Fetch jobs list with filters and pagination
  */
@@ -65,11 +130,18 @@ export function useJobsQuery(filters?: JobsFilters) {
     queryFn: async () => {
       const url = buildUrl('/api/jobs', {
         status: filters?.status,
-        department: Array.isArray(filters?.department)
-          ? filters.department.join(',')
-          : filters?.department,
+        department: serializeJobsFilterParam(filters?.department),
         pipelineHealth: filters?.pipelineHealth,
         priority: filters?.priority,
+        horizon: serializeJobsFilterParam(filters?.horizon),
+        employeeType: serializeJobsFilterParam(filters?.employeeType),
+        function: serializeJobsFilterParam(filters?.function),
+        level: serializeJobsFilterParam(filters?.level),
+        asset: serializeJobsFilterParam(filters?.asset),
+        location: serializeJobsFilterParam(filters?.location),
+        recruiterOwner: serializeJobsFilterParam(filters?.recruiterOwner),
+        functionalPriority: serializeJobsFilterParam(filters?.functionalPriority),
+        corporatePriority: serializeJobsFilterParam(filters?.corporatePriority),
         search: filters?.search,
         sort: filters?.sort,
         order: filters?.order,
@@ -84,6 +156,16 @@ export function useJobsQuery(filters?: JobsFilters) {
     retry: createRetryPolicy(queryCachePolicy.jobs.list.maxRetries),
     // Keep previous data visible during refetches for smooth transitions
     placeholderData: keepPreviousData,
+  })
+}
+
+export function useJobFilterOptionsQuery() {
+  return useQuery<JobFilterOptionsResponse, Error>({
+    queryKey: queryKeys.jobs.filterOptions(),
+    queryFn: async () => api.get<JobFilterOptionsResponse>('/api/jobs/filter-options'),
+    staleTime: queryCachePolicy.jobs.filterOptions.staleTime,
+    gcTime: queryCachePolicy.jobs.filterOptions.gcTime,
+    retry: createRetryPolicy(queryCachePolicy.jobs.filterOptions.maxRetries),
   })
 }
 

@@ -2,9 +2,19 @@ import NextAuth from 'next-auth'
 import type { Session, User } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import Credentials from 'next-auth/providers/credentials'
-import { compare } from 'bcryptjs'
+import { compare, hash } from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { authConfig } from './auth.config'
+
+// Pre-computed dummy hash for constant-time comparison when user is not found.
+// Prevents timing attacks that could enumerate valid email addresses.
+let _dummyHash: string | null = null
+async function getDummyHash(): Promise<string> {
+  if (!_dummyHash) {
+    _dummyHash = await hash('dummy-password-for-timing-safety', 10)
+  }
+  return _dummyHash
+}
 
 const SESSION_USER_SELECT = {
   id: true,
@@ -92,6 +102,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         })
 
         if (!user || !user.active) {
+          // Perform a dummy comparison to prevent timing-based email enumeration.
+          // Without this, "user not found" returns ~instantly while "wrong password"
+          // takes ~250ms (bcrypt cost), letting attackers distinguish the two.
+          await compare(password, await getDummyHash())
           return null
         }
 

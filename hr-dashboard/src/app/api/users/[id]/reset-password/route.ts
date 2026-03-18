@@ -11,6 +11,7 @@ import { buildSetPasswordUrl, hashSetPasswordToken, issueSetPasswordToken } from
 import { prisma } from '@/lib/prisma'
 import { canManageUsers } from '@/lib/permissions'
 import { enforceRouteRateLimit } from '@/lib/rate-limit'
+import { isValidUUID } from '@/lib/validations'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -79,6 +80,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   const { id } = await params
+
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 })
+  }
 
   const user = await prisma.user.findUnique({
     where: { id },

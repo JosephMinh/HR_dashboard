@@ -35,6 +35,7 @@ const RATE_LIMIT_RULES: Record<RateLimitScope, RateLimitRule> = {
 }
 
 const RATE_LIMIT_METHODS = new Set(['POST', 'PATCH', 'DELETE', 'PUT'])
+const AUTH_STRICT_PATH_PREFIXES = ['/api/auth/callback', '/api/auth/signin', '/api/auth/signout']
 const TRUSTED_CLIENT_IP_HEADERS = [
   'cf-connecting-ip',
   'x-vercel-forwarded-for',
@@ -117,7 +118,11 @@ export function resolveRateLimitScope(pathname: string, method: string): RateLim
   }
 
   if (pathname.startsWith('/api/auth/')) {
-    return 'auth'
+    return AUTH_STRICT_PATH_PREFIXES.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+      ? 'auth'
+      : 'read'
   }
 
   if (pathname.startsWith('/api/upload/')) {

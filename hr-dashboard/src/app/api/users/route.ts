@@ -179,38 +179,52 @@ export async function POST(request: NextRequest) {
   // password via the onboarding token link sent in the invite email.
   const placeholderHash = await hash(crypto.randomBytes(32).toString('hex'), 10)
 
-  const { user, passwordSetup } = await prisma.$transaction(async (tx) => {
-    const createdUser = await tx.user.create({
-      data: {
-        name: trimmedName,
-        email: normalizedEmail,
-        passwordHash: placeholderHash,
-        role: role as UserRole,
-        active: true,
-        mustChangePassword: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        active: true,
-        mustChangePassword: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    })
+  let user: { id: string; name: string; email: string; role: UserRole; active: boolean; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }
+  let passwordSetup: { token: string }
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          name: trimmedName,
+          email: normalizedEmail,
+          passwordHash: placeholderHash,
+          role: role as UserRole,
+          active: true,
+          mustChangePassword: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          active: true,
+          mustChangePassword: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })
 
-    const issuedToken = await issueSetPasswordToken({
-      userId: createdUser.id,
-      tx,
-    })
+      const issuedToken = await issueSetPasswordToken({
+        userId: createdUser.id,
+        tx,
+      })
 
-    return {
-      user: createdUser,
-      passwordSetup: issuedToken,
+      return {
+        user: createdUser,
+        passwordSetup: issuedToken,
+      }
+    })
+    user = result.user
+    passwordSetup = result.passwordSetup
+  } catch (error) {
+    if (
+      typeof error === 'object' && error !== null &&
+      'code' in error && (error as { code: string }).code === 'P2002'
+    ) {
+      return NextResponse.json({ error: 'A user with this email already exists' }, { status: 409 })
     }
-  })
+    throw error
+  }
 
   await logAuditCreate({
     userId: session.user.id,

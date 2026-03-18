@@ -155,16 +155,20 @@ export async function GET(request: NextRequest) {
       result.success = false
     }
 
-    return NextResponse.json(result)
+    // Redact internal storage keys and detailed error messages from response
+    const { deletedKeys: _dk, errors: rawErrors, ...safeResult } = result
+    return NextResponse.json({
+      ...safeResult,
+      errorCount: rawErrors.length,
+    })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     console.error(`[cleanup-orphaned-resumes] Fatal error: ${errorMessage}`)
 
     return NextResponse.json(
       {
-        ...result,
         success: false,
-        error: errorMessage,
+        error: 'Internal cleanup error',
       },
       { status: 500 }
     )

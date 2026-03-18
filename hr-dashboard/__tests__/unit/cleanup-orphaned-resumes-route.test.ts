@@ -129,7 +129,6 @@ describe('GET /api/cron/cleanup-orphaned-resumes', () => {
       scanned: 1001,
       orphaned: 1,
       deleted: 1,
-      deletedKeys: [orphanedObject.key],
     })
     expect(deleteObjectMock).toHaveBeenCalledWith(orphanedObject.key)
   })

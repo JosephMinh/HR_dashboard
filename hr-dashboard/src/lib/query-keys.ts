@@ -9,12 +9,24 @@
  */
 
 // Types for filter parameters
+export const JOBS_MISSING_FILTER_SENTINEL = '__MISSING__' as const
+
+export type JobsFilterParam = string | string[]
+
 export interface JobsFilters {
   status?: string
-  department?: string | string[]
+  department?: JobsFilterParam
   pipelineHealth?: string
   priority?: string
-  horizon?: string
+  horizon?: JobsFilterParam
+  employeeType?: JobsFilterParam
+  function?: JobsFilterParam
+  level?: JobsFilterParam
+  asset?: JobsFilterParam
+  location?: JobsFilterParam
+  recruiterOwner?: JobsFilterParam
+  functionalPriority?: JobsFilterParam
+  corporatePriority?: JobsFilterParam
   search?: string
   sort?: string
   order?: 'asc' | 'desc'
@@ -85,6 +97,7 @@ export const queryCachePolicy: {
   jobs: {
     list: CachePolicy
     detail: CachePolicy
+    filterOptions: CachePolicy
   }
   candidates: {
     list: CachePolicy
@@ -113,6 +126,7 @@ export const queryCachePolicy: {
   jobs: {
     list: { staleTime: 20_000, gcTime: 5 * 60_000, maxRetries: 2 },
     detail: { staleTime: 60_000, gcTime: 10 * 60_000, maxRetries: 1 },
+    filterOptions: { staleTime: 5 * 60_000, gcTime: 30 * 60_000, maxRetries: 1 },
   },
   candidates: {
     list: { staleTime: 20_000, gcTime: 5 * 60_000, maxRetries: 2 },
@@ -159,6 +173,7 @@ export const queryKeys = {
         : queryKeys.jobs.lists(),
     details: () => [...queryKeys.jobs.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.jobs.details(), id] as const,
+    filterOptions: () => [...queryKeys.jobs.all, 'filterOptions'] as const,
   },
 
   // Candidates

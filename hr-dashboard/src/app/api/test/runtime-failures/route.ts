@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { _setTestInterceptor, type EmailPayload, type EmailResult } from "@/lib/email"
+import { resetRateLimitStore } from "@/lib/rate-limit"
 import { _setStorageTestInterceptor } from "@/lib/storage"
 
 export const dynamic = "force-dynamic"
@@ -88,6 +89,7 @@ function createStorageConfigError(): Error & {
 function clearRuntimeFailures() {
   _setTestInterceptor(null)
   _setStorageTestInterceptor(null)
+  resetRateLimitStore()
 }
 
 export async function POST(request: NextRequest) {

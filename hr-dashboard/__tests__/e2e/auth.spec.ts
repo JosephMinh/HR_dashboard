@@ -17,6 +17,20 @@ async function gotoLogin(page: Page, path = "/login"): Promise<void> {
   await page.waitForSelector("#email", { state: "visible" })
 }
 
+async function prepareLogin(page: Page, email: string, password: string): Promise<void> {
+  await page.waitForLoadState("networkidle")
+  await page.getByLabel("Email").fill(email)
+  await page.getByLabel("Password").fill(password)
+  await page.waitForFunction(
+    ([expectedEmail, expectedPassword]) => {
+      const emailField = document.querySelector<HTMLInputElement>("#email")
+      const passwordField = document.querySelector<HTMLInputElement>("#password")
+      return emailField?.value === expectedEmail && passwordField?.value === expectedPassword
+    },
+    [email, password],
+  )
+}
+
 test.describe("Login Flow", () => {
   test.beforeEach(async ({ page }) => {
     // Start from login page
@@ -26,12 +40,10 @@ test.describe("Login Flow", () => {
   test("successful login redirects to dashboard", async ({ page }) => {
     const user = TEST_USERS.RECRUITER
 
-    // Fill in credentials
-    await page.fill("#email", user.email)
-    await page.fill("#password", user.password)
+    await prepareLogin(page, user.email, user.password)
 
     // Submit form
-    await page.click('button[type="submit"]')
+    await page.getByRole("button", { name: /^sign in$/i }).click()
 
     // Should redirect to dashboard
     await page.waitForURL("/", { timeout: 10000 })
@@ -43,9 +55,8 @@ test.describe("Login Flow", () => {
   })
 
   test("invalid email shows error", async ({ page }) => {
-    await page.fill("#email", "nonexistent@example.com")
-    await page.fill("#password", "password123")
-    await page.click('button[type="submit"]')
+    await prepareLogin(page, "nonexistent@example.com", "password123")
+    await page.getByRole("button", { name: /^sign in$/i }).click()
 
     // Should show error message
     await expect(page.getByText("Invalid email or password")).toBeVisible()
@@ -57,9 +68,8 @@ test.describe("Login Flow", () => {
   test("invalid password shows error", async ({ page }) => {
     const user = TEST_USERS.RECRUITER
 
-    await page.fill("#email", user.email)
-    await page.fill("#password", "wrongpassword")
-    await page.click('button[type="submit"]')
+    await prepareLogin(page, user.email, "wrongpassword")
+    await page.getByRole("button", { name: /^sign in$/i }).click()
 
     // Should show error message
     await expect(page.getByText("Invalid email or password")).toBeVisible()
@@ -70,7 +80,8 @@ test.describe("Login Flow", () => {
 
   test("empty fields prevent submission", async ({ page }) => {
     // Try to submit empty form
-    const submitButton = page.locator('button[type="submit"]')
+    await page.waitForLoadState("networkidle")
+    const submitButton = page.getByRole("button", { name: /^sign in$/i })
     await submitButton.click()
 
     // Form should have validation, still on login page
@@ -84,11 +95,10 @@ test.describe("Login Flow", () => {
   test("loading state shows during login", async ({ page }) => {
     const user = TEST_USERS.RECRUITER
 
-    await page.fill("#email", user.email)
-    await page.fill("#password", user.password)
+    await prepareLogin(page, user.email, user.password)
 
     // Start login
-    const submitPromise = page.click('button[type="submit"]')
+    const submitPromise = page.getByRole("button", { name: /^sign in$/i }).click()
 
     // Check for loading state (button should show "Signing in...")
     await expect(page.getByText("Signing in...")).toBeVisible()
@@ -105,9 +115,8 @@ test.describe("Login Flow", () => {
     await gotoLogin(page, "/login?callbackUrl=/jobs")
 
     // Login
-    await page.fill("#email", user.email)
-    await page.fill("#password", user.password)
-    await page.click('button[type="submit"]')
+    await prepareLogin(page, user.email, user.password)
+    await page.getByRole("button", { name: /^sign in$/i }).click()
 
     // Should redirect to /jobs
     await page.waitForURL("/jobs", { timeout: 10000 })

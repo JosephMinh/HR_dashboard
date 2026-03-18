@@ -24,10 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { JOBS_MISSING_FILTER_SENTINEL } from '@/lib/query-keys'
 import { JOB_STATUS, JOB_PRIORITY, PIPELINE_HEALTH } from '@/lib/status-config'
 import { cn } from '@/lib/utils'
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useJobsQuery } from '@/hooks/queries'
+import { useJobsQuery, useJobFilterOptionsQuery } from '@/hooks/queries'
+import type { JobFilterOption } from '@/hooks/queries'
 
 const ITEMS_PER_PAGE = 20
 
@@ -43,17 +45,32 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
   const status = searchParams.get('status') || ''
   const pipelineHealth = searchParams.get('pipelineHealth') || ''
   const priority = searchParams.get('priority') || ''
+  const department = searchParams.get('department') || ''
+  const employeeType = searchParams.get('employeeType') || ''
+  const location = searchParams.get('location') || ''
+  const recruiterOwner = searchParams.get('recruiterOwner') || ''
+  const functionalPriority = searchParams.get('functionalPriority') || ''
+  const corporatePriority = searchParams.get('corporatePriority') || ''
   const search = searchParams.get('search') || ''
   const sort = searchParams.get('sort') || 'updatedAt'
   const order = (searchParams.get('order') || 'desc') as 'asc' | 'desc'
   const parsedPage = Number.parseInt(searchParams.get('page') || '1', 10)
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
 
+  // Fetch filter dropdown options from server
+  const { data: filterOptionsData, isLoading: isFilterOptionsLoading } = useJobFilterOptionsQuery()
+
   // Use TanStack Query for data fetching
   const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useJobsQuery({
     status: status || undefined,
     pipelineHealth: pipelineHealth || undefined,
     priority: priority || undefined,
+    department: department || undefined,
+    employeeType: employeeType || undefined,
+    location: location || undefined,
+    recruiterOwner: recruiterOwner || undefined,
+    functionalPriority: functionalPriority || undefined,
+    corporatePriority: corporatePriority || undefined,
     search: search || undefined,
     sort,
     order,
@@ -114,7 +131,7 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
     router.push('/jobs')
   }
 
-  const hasFilters = status || pipelineHealth || priority || search.trim()
+  const hasFilters = status || pipelineHealth || priority || department || employeeType || location || recruiterOwner || functionalPriority || corporatePriority || search.trim()
 
   // Calculate display range for pagination info
   const startIndex = (page - 1) * ITEMS_PER_PAGE
@@ -182,6 +199,62 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterOptionsSelect
+            label="All Departments"
+            ariaLabel="Filter by department"
+            value={department}
+            options={filterOptionsData?.options?.department}
+            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
+            isLoading={isFilterOptionsLoading}
+            onChange={(value) => updateParams({ department: value })}
+          />
+          <FilterOptionsSelect
+            label="All Employee Types"
+            ariaLabel="Filter by employee type"
+            value={employeeType}
+            options={filterOptionsData?.options?.employeeType}
+            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
+            isLoading={isFilterOptionsLoading}
+            onChange={(value) => updateParams({ employeeType: value })}
+          />
+          <FilterOptionsSelect
+            label="All Locations"
+            ariaLabel="Filter by location"
+            value={location}
+            options={filterOptionsData?.options?.location}
+            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
+            isLoading={isFilterOptionsLoading}
+            onChange={(value) => updateParams({ location: value })}
+          />
+          <FilterOptionsSelect
+            label="All Recruiters"
+            ariaLabel="Filter by recruiter"
+            value={recruiterOwner}
+            options={filterOptionsData?.options?.recruiterOwner}
+            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
+            isLoading={isFilterOptionsLoading}
+            onChange={(value) => updateParams({ recruiterOwner: value })}
+          />
+          <FilterOptionsSelect
+            label="All Func. Priority"
+            ariaLabel="Filter by functional priority"
+            value={functionalPriority}
+            options={filterOptionsData?.options?.functionalPriority}
+            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
+            isLoading={isFilterOptionsLoading}
+            onChange={(value) => updateParams({ functionalPriority: value })}
+          />
+          <FilterOptionsSelect
+            label="All Corp. Priority"
+            ariaLabel="Filter by corporate priority"
+            value={corporatePriority}
+            options={filterOptionsData?.options?.corporatePriority}
+            missingValue={filterOptionsData?.missingValue ?? JOBS_MISSING_FILTER_SENTINEL}
+            isLoading={isFilterOptionsLoading}
+            onChange={(value) => updateParams({ corporatePriority: value })}
+          />
         </div>
       </FilterBar>
 
@@ -306,5 +379,67 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
         </>
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Filter-options dropdown (server-backed)
+// ---------------------------------------------------------------------------
+
+interface FilterOptionsSelectProps {
+  label: string
+  ariaLabel: string
+  value: string
+  options: JobFilterOption[] | undefined
+  missingValue: string
+  isLoading: boolean
+  onChange: (value: string) => void
+}
+
+function FilterOptionsSelect({
+  label,
+  ariaLabel,
+  value,
+  options,
+  missingValue,
+  isLoading,
+  onChange,
+}: FilterOptionsSelectProps) {
+  const normalizedOptions = options ?? []
+
+  // Deep-link resilience: if URL contains a value not in the options list,
+  // include it so the user can see and clear it rather than silently dropping state
+  const hasUnknownValue =
+    Boolean(value) &&
+    !normalizedOptions.some((opt) => opt.value === value)
+
+  const placeholder = isLoading ? 'Loading...' : label
+
+  return (
+    <Select
+      value={value || 'ALL'}
+      onValueChange={(nextValue) => {
+        const normalizedValue = nextValue ?? 'ALL'
+        onChange(normalizedValue === 'ALL' ? '' : normalizedValue)
+      }}
+      disabled={isLoading && !value}
+    >
+      <SelectTrigger className="w-44" aria-label={ariaLabel}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="ALL">{label}</SelectItem>
+        {normalizedOptions.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.isMissing ? 'Not Set' : opt.label}
+          </SelectItem>
+        ))}
+        {hasUnknownValue && (
+          <SelectItem value={value}>
+            {value === missingValue ? 'Not Set' : `${value} (Unavailable)`}
+          </SelectItem>
+        )}
+      </SelectContent>
+    </Select>
   )
 }

@@ -11,14 +11,83 @@ const INACTIVE_STAGES: ApplicationStage[] = [
   ApplicationStage.WITHDRAWN,
 ]
 
+const MISSING_FILTER_TOKEN = '__MISSING__'
+
 type SortField = 'title' | 'status' | 'targetFillDate' | 'updatedAt' | 'department' | 'openedAt' | 'horizon' | 'function' | 'level' | 'employeeType'
 type SortOrder = 'asc' | 'desc'
+type NullableStringJobField =
+  | 'location'
+  | 'recruiterOwner'
+  | 'functionalPriority'
+  | 'corporatePriority'
 
 function isTargetBeforeOpened(openedAt: Date | null | undefined, targetFillDate: Date | null | undefined): boolean {
   if (!openedAt || !targetFillDate) {
     return false
   }
   return targetFillDate.getTime() < openedAt.getTime()
+}
+
+function parseCsvParam(param: string | null): string[] {
+  if (!param) {
+    return []
+  }
+
+  return param
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function fieldEquals(field: NullableStringJobField, value: string): Prisma.JobWhereInput {
+  return { [field]: value } as Prisma.JobWhereInput
+}
+
+function fieldIn(field: NullableStringJobField, values: string[]): Prisma.JobWhereInput {
+  return { [field]: { in: values } } as Prisma.JobWhereInput
+}
+
+function fieldMissing(field: NullableStringJobField): Prisma.JobWhereInput {
+  return {
+    OR: [
+      { [field]: null } as Prisma.JobWhereInput,
+      { [field]: '' } as Prisma.JobWhereInput,
+    ],
+  }
+}
+
+function buildNullableStringFieldFilter(
+  field: NullableStringJobField,
+  param: string | null,
+): Prisma.JobWhereInput | null {
+  const values = parseCsvParam(param)
+  if (values.length === 0) {
+    return null
+  }
+
+  const wantsMissing = values.includes(MISSING_FILTER_TOKEN)
+  const nonMissingValues = values.filter((value) => value !== MISSING_FILTER_TOKEN)
+  const clauses: Prisma.JobWhereInput[] = []
+
+  if (nonMissingValues.length === 1) {
+    clauses.push(fieldEquals(field, nonMissingValues[0]!))
+  } else if (nonMissingValues.length > 1) {
+    clauses.push(fieldIn(field, nonMissingValues))
+  }
+
+  if (wantsMissing) {
+    clauses.push(fieldMissing(field))
+  }
+
+  if (clauses.length === 0) {
+    return null
+  }
+
+  if (clauses.length === 1) {
+    return clauses[0]!
+  }
+
+  return { OR: clauses }
 }
 
 export async function GET(request: NextRequest) {
@@ -65,6 +134,10 @@ export async function GET(request: NextRequest) {
   const levelParam = searchParams.get('level')
   const horizonParam = searchParams.get('horizon')
   const assetParam = searchParams.get('asset')
+  const locationParam = searchParams.get('location')
+  const recruiterOwnerParam = searchParams.get('recruiterOwner')
+  const functionalPriorityParam = searchParams.get('functionalPriority')
+  const corporatePriorityParam = searchParams.get('corporatePriority')
   // Limit search length to prevent performance issues with very long queries
   const search = searchParams.get('search')?.slice(0, 200) ?? null
   const sortParam = searchParams.get('sort') as SortField | null
@@ -105,6 +178,7 @@ export async function GET(request: NextRequest) {
 
   // Build where clause
   const where: Prisma.JobWhereInput = {}
+  const andConditions: Prisma.JobWhereInput[] = []
 
   if (statusParam) {
     const statuses = statusParam.split(',').filter(s =>
@@ -198,8 +272,26 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const nullableFilters: Array<[NullableStringJobField, string | null]> = [
+    ['location', locationParam],
+    ['recruiterOwner', recruiterOwnerParam],
+    ['functionalPriority', functionalPriorityParam],
+    ['corporatePriority', corporatePriorityParam],
+  ]
+
+  for (const [field, param] of nullableFilters) {
+    const filter = buildNullableStringFieldFilter(field, param)
+    if (filter) {
+      andConditions.push(filter)
+    }
+  }
+
   if (search) {
     where.title = { contains: search, mode: 'insensitive' }
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions
   }
 
   // Build orderBy

@@ -7,11 +7,15 @@
 // Jobs
 export {
   useJobsQuery,
+  useJobFilterOptionsQuery,
   useJobQuery,
   useCreateJobMutation,
   useUpdateJobMutation,
   useDeleteJobMutation,
   type Job,
+  type JobFilterField,
+  type JobFilterOption,
+  type JobFilterOptionsResponse,
   type JobsResponse,
   type CreateJobInput,
   type UpdateJobInput,

@@ -19,7 +19,7 @@
  *   --warn-only          Print report but always exit 0 (CI ramp-up mode)
  */
 
-import { execSync } from "node:child_process"
+import { execFileSync, execSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 
@@ -223,7 +223,7 @@ export function getChangedSourceFiles(baseRef: string, gitRoot: string, staged: 
         cwd: gitRoot,
       })
     } else {
-      output = execSync(`git diff --name-only --diff-filter=ACMR "${baseRef}"`, {
+      output = execFileSync("git", ["diff", "--name-only", "--diff-filter=ACMR", baseRef], {
         encoding: "utf8",
         cwd: gitRoot,
       })

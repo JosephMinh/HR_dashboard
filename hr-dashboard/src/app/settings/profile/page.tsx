@@ -21,6 +21,13 @@ export default function ProfilePage() {
     }
   }, [router, status])
 
+  // Sync name from session once it finishes loading
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user?.name) {
+      setName((prev) => prev || session.user.name!)
+    }
+  }, [status, session?.user?.name])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
