@@ -102,14 +102,35 @@ export async function performLogin(
   for (let attempt = 1; attempt <= 2; attempt++) {
     // Navigate to login page
     await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded" })
-    await page.waitForSelector('input[type="email"]', { state: "visible" })
+    await page.waitForLoadState("networkidle")
 
-    // Fill in credentials
-    await page.fill('input[name="email"], input[type="email"]', user.email)
-    await page.fill('input[name="password"], input[type="password"]', user.password)
+    const emailInput = page.getByLabel("Email")
+    const passwordInput = page.getByLabel("Password")
+    const submitButton = page.getByRole("button", { name: /^sign in$/i })
+
+    await emailInput.waitFor({ state: "visible" })
+    await passwordInput.waitFor({ state: "visible" })
+
+    // Let the client form hydrate before submitting. If we click too early,
+    // the browser performs a native GET submit to /login? instead of the
+    // React onSubmit handler calling next-auth signIn().
+    await emailInput.fill(user.email)
+    await passwordInput.fill(user.password)
+    await emailInput.blur()
+    await passwordInput.blur()
+    await submitButton.waitFor({ state: "visible" })
+
+    await page.waitForFunction(
+      ([email, password]) => {
+        const emailField = document.querySelector<HTMLInputElement>("#email")
+        const passwordField = document.querySelector<HTMLInputElement>("#password")
+        return emailField?.value === email && passwordField?.value === password
+      },
+      [user.email, user.password],
+    )
 
     // Submit form
-    await page.click('button[type="submit"]')
+    await submitButton.click()
 
     // Wait for redirect to dashboard
     try {

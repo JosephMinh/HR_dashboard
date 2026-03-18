@@ -101,105 +101,107 @@ test.describe("Admin Resend Invite Flow", () => {
 
     await clearEmailOutbox(request)
 
-    // Step 1: Admin creates the user
-    await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
-    await expect(adminPage.getByText("User Management")).toBeVisible()
-
-    await adminPage.getByRole("button", { name: /new user/i }).click()
-    await adminPage.fill("#create-name", testName)
-    await adminPage.fill("#create-email", testEmail)
-    await adminPage.selectOption("#create-role", "VIEWER")
-    await adminPage.getByRole("button", { name: /^create user$/i }).click()
-
-    await expect(
-      adminPage.getByText("User created. An onboarding invite email has been sent."),
-    ).toBeVisible({ timeout: 10_000 })
-
-    // Verify "Pending Setup" badge appears in the row
-    const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
-    await expect(userRow).toBeVisible({ timeout: 10_000 })
-    await expect(userRow.getByText("Pending Setup")).toBeVisible()
-
-    // Capture the first invite email URL (for later invalidation check)
-    const firstEmail = await fetchLatestEmail(request, testEmail)
-    expect(firstEmail.subject).toBe("You're invited to HR Dashboard")
-    const firstSetupUrl = extractSetPasswordUrl(firstEmail)
-
-    // Step 2: Admin clicks "Resend Invite"
-    await clearEmailOutbox(request)
-
-    await userRow.getByRole("button", { name: /resend invite/i }).click()
-
-    // Confirmation dialog appears
-    await expect(adminPage.getByText("Resend invite?")).toBeVisible({
-      timeout: 5_000,
-    })
-    await expect(
-      adminPage.getByText(/fresh setup link and invalidate any previous ones/i),
-    ).toBeVisible()
-
-    // Confirm the resend
-    await adminPage.getByRole("button", { name: /^resend invite$/i }).click()
-
-    // Success banner appears
-    await expect(
-      adminPage.getByText("Onboarding invite resent successfully."),
-    ).toBeVisible({ timeout: 10_000 })
-
-    // Step 3: A fresh email arrives in the outbox
-    const secondEmail = await fetchLatestEmail(request, testEmail)
-    expect(secondEmail.subject).toBe("You're invited to HR Dashboard")
-    const secondSetupUrl = extractSetPasswordUrl(secondEmail)
-    expect(secondSetupUrl).not.toBe(firstSetupUrl)
-
-    // Step 4: The old (first) token is now invalid
-    const ctx1 = await browser.newContext()
-    const page1 = createLoggedPage(await ctx1.newPage(), logger)
     try {
-      await page1.goto(firstSetupUrl, { waitUntil: "domcontentloaded" })
-      // Should show one of: Already Used, Invalid Link, or Link Expired
+      // Step 1: Admin creates the user
+      await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+      await expect(adminPage.getByText("User Management")).toBeVisible()
+
+      await adminPage.getByRole("button", { name: /new user/i }).click()
+      await adminPage.fill("#create-name", testName)
+      await adminPage.fill("#create-email", testEmail)
+      await adminPage.selectOption("#create-role", "VIEWER")
+      await adminPage.getByRole("button", { name: /^create user$/i }).click()
+
       await expect(
-        page1.getByText(/already used|invalid link|link expired/i),
+        adminPage.getByText("User created. An onboarding invite email has been sent."),
       ).toBeVisible({ timeout: 10_000 })
-    } finally {
-      await ctx1.close()
-    }
 
-    // Step 5: New token completes onboarding successfully
-    const ctx2 = await browser.newContext()
-    const page2 = createLoggedPage(await ctx2.newPage(), logger)
-    try {
-      await page2.goto(secondSetupUrl, { waitUntil: "domcontentloaded" })
-      await expect(page2.getByText("Set Your Password")).toBeVisible({
-        timeout: 10_000,
+      // Verify "Pending Setup" badge appears in the row
+      const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
+      await expect(userRow).toBeVisible({ timeout: 10_000 })
+      await expect(userRow.getByText("Pending Setup")).toBeVisible()
+
+      // Capture the first invite email URL (for later invalidation check)
+      const firstEmail = await fetchLatestEmail(request, testEmail)
+      expect(firstEmail.subject).toBe("You're invited to HR Dashboard")
+      const firstSetupUrl = extractSetPasswordUrl(firstEmail)
+
+      // Step 2: Admin clicks "Resend Invite"
+      await clearEmailOutbox(request)
+
+      await userRow.getByRole("button", { name: /resend invite/i }).click()
+
+      // Confirmation dialog appears
+      await expect(adminPage.getByText("Resend invite?")).toBeVisible({
+        timeout: 5_000,
       })
+      await expect(
+        adminPage.getByText(/fresh setup link and invalidate any previous ones/i),
+      ).toBeVisible()
 
-      await page2.fill("#newPassword", STRONG_PASSWORD)
-      await page2.fill("#confirmPassword", STRONG_PASSWORD)
-      await page2.getByRole("button", { name: /^set password$/i }).click()
+      // Confirm the resend
+      await adminPage.getByRole("button", { name: /^resend invite$/i }).click()
 
-      await expect(page2.getByText("Password Set Successfully")).toBeVisible({
-        timeout: 10_000,
+      // Success banner appears
+      await expect(
+        adminPage.getByText("Onboarding invite resent successfully."),
+      ).toBeVisible({ timeout: 10_000 })
+
+      // Step 3: A fresh email arrives in the outbox
+      const secondEmail = await fetchLatestEmail(request, testEmail)
+      expect(secondEmail.subject).toBe("You're invited to HR Dashboard")
+      const secondSetupUrl = extractSetPasswordUrl(secondEmail)
+      expect(secondSetupUrl).not.toBe(firstSetupUrl)
+
+      // Step 4: The old (first) token is now invalid — issueSetPasswordToken marks
+      // all prior unused tokens as usedAt when it creates the replacement.
+      const ctx1 = await browser.newContext()
+      const page1 = createLoggedPage(await ctx1.newPage(), logger)
+      try {
+        await page1.goto(firstSetupUrl, { waitUntil: "domcontentloaded" })
+        // Expect "Already Used" since the token was invalidated by the resend
+        await expect(
+          page1.getByText(/already used/i),
+        ).toBeVisible({ timeout: 10_000 })
+      } finally {
+        await ctx1.close()
+      }
+
+      // Step 5: New token completes onboarding successfully
+      const ctx2 = await browser.newContext()
+      const page2 = createLoggedPage(await ctx2.newPage(), logger)
+      try {
+        await page2.goto(secondSetupUrl, { waitUntil: "domcontentloaded" })
+        await expect(page2.getByText("Set Your Password")).toBeVisible({
+          timeout: 10_000,
+        })
+
+        await page2.fill("#newPassword", STRONG_PASSWORD)
+        await page2.fill("#confirmPassword", STRONG_PASSWORD)
+        await page2.getByRole("button", { name: /^set password$/i }).click()
+
+        await expect(page2.getByText("Password Set Successfully")).toBeVisible({
+          timeout: 10_000,
+        })
+      } finally {
+        await ctx2.close()
+      }
+
+      // Step 6: DB reflects completed onboarding
+      const dbUser = await prisma.user.findUnique({
+        where: { email: testEmail },
+        select: { mustChangePassword: true },
       })
+      expect(dbUser?.mustChangePassword).toBe(false)
+
+      // Step 7: Admin UI no longer shows "Pending Setup"
+      await adminPage.reload({ waitUntil: "domcontentloaded" })
+      const completedRow = adminPage.getByRole("row").filter({ hasText: testEmail })
+      await expect(completedRow).toBeVisible({ timeout: 10_000 })
+      await expect(completedRow.getByText("Pending Setup")).toHaveCount(0)
     } finally {
-      await ctx2.close()
+      await prisma.user.delete({ where: { email: testEmail } }).catch(() => {})
     }
-
-    // Step 6: DB reflects completed onboarding
-    const dbUser = await prisma.user.findUnique({
-      where: { email: testEmail },
-      select: { mustChangePassword: true },
-    })
-    expect(dbUser?.mustChangePassword).toBe(false)
-
-    // Step 7: Admin UI no longer shows "Pending Setup"
-    await adminPage.reload({ waitUntil: "domcontentloaded" })
-    const completedRow = adminPage.getByRole("row").filter({ hasText: testEmail })
-    await expect(completedRow).toBeVisible({ timeout: 10_000 })
-    await expect(completedRow.getByText("Pending Setup")).toHaveCount(0)
-
-    // Cleanup
-    await prisma.user.delete({ where: { email: testEmail } }).catch(() => {})
   })
 
   test("resend invite cancel leaves prior invite intact", async ({
@@ -211,38 +213,42 @@ test.describe("Admin Resend Invite Flow", () => {
 
     await clearEmailOutbox(request)
 
-    await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
-    await adminPage.getByRole("button", { name: /new user/i }).click()
-    await adminPage.fill("#create-name", "E2E Resend Cancel")
-    await adminPage.fill("#create-email", testEmail)
-    await adminPage.selectOption("#create-role", "VIEWER")
-    await adminPage.getByRole("button", { name: /^create user$/i }).click()
-    await expect(
-      adminPage.getByText("User created. An onboarding invite email has been sent."),
-    ).toBeVisible({ timeout: 10_000 })
+    try {
+      await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+      await adminPage.getByRole("button", { name: /new user/i }).click()
+      await adminPage.fill("#create-name", "E2E Resend Cancel")
+      await adminPage.fill("#create-email", testEmail)
+      await adminPage.selectOption("#create-role", "VIEWER")
+      await adminPage.getByRole("button", { name: /^create user$/i }).click()
+      await expect(
+        adminPage.getByText("User created. An onboarding invite email has been sent."),
+      ).toBeVisible({ timeout: 10_000 })
 
-    // Record email count before attempted resend
-    const countBefore = await countEmails(request, testEmail)
+      // Wait for the initial invite to land before recording the baseline count,
+      // otherwise a race between the email arriving and countBefore being read
+      // could make countAfter appear higher than expected.
+      await fetchLatestEmail(request, testEmail)
+      const countBefore = await countEmails(request, testEmail)
 
-    const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
-    await userRow.getByRole("button", { name: /resend invite/i }).click()
-    await expect(adminPage.getByText("Resend invite?")).toBeVisible()
+      const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
+      await userRow.getByRole("button", { name: /resend invite/i }).click()
+      await expect(adminPage.getByText("Resend invite?")).toBeVisible()
 
-    // Cancel the dialog
-    await adminPage.getByRole("button", { name: /^cancel$/i }).click()
+      // Cancel the dialog
+      await adminPage.getByRole("button", { name: /^cancel$/i }).click()
 
-    // Dialog should be gone
-    await expect(adminPage.getByText("Resend invite?")).not.toBeVisible()
+      // Dialog should be gone
+      await expect(adminPage.getByText("Resend invite?")).not.toBeVisible()
 
-    // No additional email was sent
-    const countAfter = await countEmails(request, testEmail)
-    expect(countAfter).toBe(countBefore)
+      // No additional email was sent
+      const countAfter = await countEmails(request, testEmail)
+      expect(countAfter).toBe(countBefore)
 
-    // User still shows Pending Setup
-    await expect(userRow.getByText("Pending Setup")).toBeVisible()
-
-    // Cleanup
-    await prisma.user.delete({ where: { email: testEmail } }).catch(() => {})
+      // User still shows Pending Setup
+      await expect(userRow.getByText("Pending Setup")).toBeVisible()
+    } finally {
+      await prisma.user.delete({ where: { email: testEmail } }).catch(() => {})
+    }
   })
 })
 
@@ -424,6 +430,10 @@ test.describe("Admin Deactivate and Reactivate User", () => {
 
     try {
       await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
+      // Switch to "All" filter before any edits — the default "Active" filter
+      // would hide the user from the table as soon as we deactivate them,
+      // causing every subsequent assertion on the row to fail.
+      await adminPage.locator("select").selectOption("all")
       const userRow = adminPage.getByRole("row").filter({ hasText: testEmail })
       await expect(userRow).toBeVisible({ timeout: 10_000 })
 
@@ -642,7 +652,6 @@ test.describe("Admin Delete User Safeguards", () => {
 
   test("admin cannot see a delete button for their own account", async ({
     adminPage,
-    prisma,
   }) => {
     await adminPage.goto("/admin/users", { waitUntil: "domcontentloaded" })
 
