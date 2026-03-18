@@ -57,6 +57,14 @@ let testPrisma: PrismaClient | null = null
 // (AccessExclusiveLock) and route-handler queries (RowExclusiveLock).
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
+function resolveAdapterSchema(connectionString: string): string | undefined {
+  try {
+    return new URL(connectionString).searchParams.get("schema")?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Get the test Prisma client singleton
  * Uses PrismaPg adapter like the main app
@@ -66,7 +74,10 @@ export function getTestPrisma(): PrismaClient {
     // Use a single-connection pool to prevent lock contention between
     // TRUNCATE (AccessExclusiveLock) and concurrent DML from other pool
     // connections. Tests run sequentially, so parallelism isn't needed.
-    const adapter = new PrismaPg({ connectionString: TEST_DATABASE_URL, max: 1 })
+    const adapter = new PrismaPg(
+      { connectionString: TEST_DATABASE_URL, max: 1 },
+      { schema: resolveAdapterSchema(TEST_DATABASE_URL) },
+    )
     testPrisma = new PrismaClient({ adapter })
     // Make `@/lib/prisma` reuse this same client instead of creating its own
     globalForPrisma.prisma = testPrisma
