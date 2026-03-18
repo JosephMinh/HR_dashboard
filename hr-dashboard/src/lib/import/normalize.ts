@@ -180,8 +180,8 @@ export function computeIsTradeoff(tradeoffCell: string | null | undefined): bool
  * Compute pipeline health using a pinned date constant.
  *
  * Rules:
- * - past due or within 14 days → BEHIND
- * - 15–60 days out → ON_TRACK
+ * - past due open roles → BEHIND
+ * - same-day or within 60 days → ON_TRACK
  * - 61+ days out → AHEAD
  * - null target date on an open job → ON_TRACK
  * - non-OPEN jobs → null
@@ -199,12 +199,13 @@ export function computePipelineHealth(
     return "ON_TRACK";
   }
 
+  if (targetFillDate.getTime() < asOfDate.getTime()) {
+    return "BEHIND";
+  }
+
   const diffMs = targetFillDate.getTime() - asOfDate.getTime();
   const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffDays <= 14) {
-    return "BEHIND";
-  }
   if (diffDays <= 60) {
     return "ON_TRACK";
   }

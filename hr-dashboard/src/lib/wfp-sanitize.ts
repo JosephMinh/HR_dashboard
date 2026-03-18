@@ -154,10 +154,11 @@ export function computePipelineHealth(
 
   if (targetFillDate == null) return "ON_TRACK";
 
+  if (targetFillDate.getTime() < PIPELINE_HEALTH_AS_OF.getTime()) return "BEHIND";
+
   const diffMs = targetFillDate.getTime() - PIPELINE_HEALTH_AS_OF.getTime();
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-  if (diffDays <= 14) return "BEHIND";
   if (diffDays <= 60) return "ON_TRACK";
   return "AHEAD";
 }

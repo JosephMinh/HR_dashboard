@@ -228,13 +228,16 @@ describe("computePipelineHealth", () => {
     expect(computePipelineHealth("OPEN", null)).toBe("ON_TRACK")
   })
 
-  it("returns BEHIND when within 14 days", () => {
-    // PIPELINE_HEALTH_AS_OF = 2026-03-17, +14 days = 2026-03-31
-    expect(computePipelineHealth("OPEN", new Date("2026-03-25"))).toBe("BEHIND")
-    expect(computePipelineHealth("OPEN", new Date("2026-03-17"))).toBe("BEHIND")
+  it("returns BEHIND only when the target fill date is already past due", () => {
+    expect(computePipelineHealth("OPEN", new Date("2026-03-16"))).toBe("BEHIND")
   })
 
-  it("returns ON_TRACK when 15-60 days out", () => {
+  it("returns ON_TRACK on the as-of date and within 60 days", () => {
+    expect(computePipelineHealth("OPEN", new Date("2026-03-17"))).toBe("ON_TRACK")
+    expect(computePipelineHealth("OPEN", new Date("2026-03-25"))).toBe("ON_TRACK")
+  })
+
+  it("returns ON_TRACK when 1-60 days out", () => {
     // 2026-03-17 + 30 days = 2026-04-16
     expect(computePipelineHealth("OPEN", new Date("2026-04-16"))).toBe("ON_TRACK")
   })
