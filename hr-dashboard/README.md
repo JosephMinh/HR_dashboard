@@ -58,6 +58,22 @@ A full-stack recruiting operations platform for managing jobs, candidates, and h
 - Resend onboarding invites and trigger password resets
 - Role assignment (Admin, Recruiter, Viewer)
 
+### Headcount Projections
+
+- Imported from the WFP workbook's "2026 Approved Budget" sheet
+- Each projection carries department, level, employee name, monthly FTE, and a temporary job ID reference
+- Projections are matched to actual `Job` records via the matchedJobId resolution algorithm (see WFP Import Pipeline)
+- Filterable by department, level, and matched/unmatched status
+- Matched status lets recruiters see which budget lines have corresponding open requisitions and which remain unmatched
+
+### Tradeoffs
+
+- Imported from the WFP workbook's "Tradeoffs" sheet
+- Records level-change discussions: a source position traded for a target position at a different level
+- Three row types: `PAIR` (both sides present), `SOURCE_ONLY` (no target yet), `NOTE` (context annotation)
+- Each side references a job via `tempJobId` → resolved `jobId`
+- Level difference computed and stored for quick sorting and filtering
+
 ## Data Model
 
 Six primary entities:
@@ -70,6 +86,80 @@ Six primary entities:
 | `Application` | Job-candidate stage progression (unique per pair) |
 | `AuditLog` | Who changed what, when, with before/after JSON |
 | `SetPasswordToken` | HMAC-SHA256 hashed tokens for onboarding and password resets |
+
+## Architecture & Design Principles
+
+### Client-Side Data Layer
+
+TanStack Query manages all server state with a structured query key factory. Every key follows the shape `[scope, type, ...params]` — for example `['jobs', 'list', { page: 1, status: ['OPEN'] }]` or `['candidates', 'detail', '7f3a...']`. This hierarchy enables targeted invalidation: invalidating `['jobs']` clears all job-related caches, while `['jobs', 'list']` only clears list queries and leaves detail caches intact.
+
+Filter parameters within query keys are normalized before inclusion — arrays are sorted, empty arrays omitted, and undefined values stripped — so that semantically equivalent requests always produce the same cache key regardless of the order the user clicked filters.
+
+Cache timing follows a volatility-based policy matrix:
+
+| Surface | staleTime | gcTime | Rationale |
+| --- | --- | --- | --- |
+| Dashboard stats | 30s | 5m | High-visibility, changes frequently |
+| List queries | 2m | 10m | Pagination makes stale data annoying, not dangerous |
+| Detail views | 5m | 30m | Rarely changes while viewing |
+| Filter options | 10m | 60m | Near-static enum/lookup data |
+
+`keepPreviousData` is enabled on paginated list queries so that page transitions show the previous page until the new page arrives, avoiding layout flash.
+
+### Jobs Multi-Select Filter System
+
+The jobs list supports multi-select filtering across nine dimensions (status, priority, pipeline health, department, employee type, location, recruiter, functional priority, corporate priority). The system uses three coordinated layers:
+
+**URL Transport** — Filter selections are stored in the URL as repeated query parameters (`?status=OPEN&status=OFFER&department=Engineering`), not as comma-separated values. This avoids the need to escape commas in values like `"New York, NY"` and works natively with `URLSearchParams.getAll()`. Each filter dimension maps to a URL parameter key; multiple values for the same key represent an OR within that dimension, while different keys represent AND across dimensions.
+
+**Declarative Filter Registry** — A single TypeScript module (`job-filter-constants.ts`) declares every filter's metadata: field name, option source (inline enum or server-fetched), display label, aria label, trigger width, and whether in-popover search is enabled. The `JobsTable` component iterates this registry to render filters, so adding a new filter dimension requires only a new entry in the array — no component changes.
+
+**Canonical URL Ordering** — When a user toggles a checkbox, the selected values are sorted into the canonical order defined by the options array (with the missing-value sentinel always last) before writing to the URL. This ensures that clicking "Offer" then "Open" produces the same URL as clicking "Open" then "Offer" (`?status=OPEN&status=OFFER`), which matters for browser history deduplication, shareable links, and cache key stability.
+
+**Missing-Value Sentinel** — Nullable database columns (location, recruiter, etc.) can have rows where the value is NULL. The filter system represents this as a special sentinel string (`__MISSING__`) that appears as a "Not Set" option in the dropdown. The API route handler detects this sentinel in the filter array and translates it to a Prisma `OR` clause: `{ field: null }` combined with any concrete values. This lets users filter for "all jobs with no location assigned" alongside real location values.
+
+### WFP Import Pipeline
+
+The Workforce Planning (WFP) importer ingests an Excel workbook containing approved headcount projections and tradeoff decisions. The pipeline has four stages:
+
+1. **Workbook Discovery** — Scans a configurable directory for `.xlsx` files matching a naming pattern. Uses a resilience strategy: if exactly one workbook matches, it's used; if multiple match, the most recently modified file wins; if none match, the import fails with a clear error rather than silently creating empty tables.
+
+2. **Multi-Sheet Parsing** — Each sheet type (projections, tradeoffs) has its own parser that handles column mapping, type coercion, and row-type classification. Parsers are pure functions: workbook in, typed arrays out, no database interaction. This makes them independently testable without any database setup.
+
+3. **Job ID Resolution** — Parsed rows reference jobs by a temporary ID from the workbook. The resolver loads all existing jobs from the database and matches temporary IDs to real job records. Unmatched IDs are preserved as-is so that operators can see which budget lines have no corresponding requisition.
+
+4. **Transactional FK-Safe Writes** — The final stage runs inside a Prisma interactive transaction. It deletes existing projections and tradeoffs (to achieve full-refresh semantics), then bulk-creates new records. The delete order respects foreign key constraints — child records before parent records — preventing constraint violations without disabling database integrity checks.
+
+### Form Validation Architecture
+
+Forms use a two-layer validation design:
+
+- **Structural layer** (Zod schemas): Defines field presence, types, and string constraints. Schemas are shared between client-side forms and API route handlers, ensuring the same rules apply on both sides.
+
+- **Primitive layer** (pure functions): Implements business rules that need richer feedback — password strength checks, email format validation, date range logic. These functions return detailed error messages and are unit-tested independently of any form framework.
+
+TanStack Form binds these together with `onBlur` timing for individual fields and `onSubmit` timing for cross-field rules. This gives users immediate feedback as they tab between fields without blocking them with errors on fields they haven't visited yet.
+
+### Status & Visual System
+
+The visual system maps domain states to consistent visual treatments through a layered design:
+
+- **Status maps**: Five domain models (job status, priority, pipeline health, application stage, user active state) each define their own status-to-visual mapping
+- **Emphasis levels**: Each status badge supports four sizes — `xs` (inline tags), `sm` (table cells), `md` (detail views), `lg` (hero displays)
+- **Intent palette**: Five semantic intents (success, warning, danger, info, neutral) map to seven color families via CSS custom properties that respect the active theme
+
+The badge components (`JobStatusBadge`, `PipelineHealthBadge`, `JobPriorityBadge`) are thin wrappers that look up the visual config for their value and render a styled `<span>`. Adding a new status value requires only a new entry in the status map — the component, colors, and sizing adapt automatically.
+
+### State Surface Taxonomy
+
+Empty states, error states, and loading states follow a taxonomy of eleven surface types. Each surface type defines:
+
+- **Tone**: Whether the message is neutral ("No candidates yet"), encouraging ("Create your first job"), or urgent ("Failed to load")
+- **Icon**: Contextual icon from the Lucide set, chosen per surface type
+- **Actions**: Zero or more action buttons (clear filters, retry, create new) with configurable labels and handlers
+- **Template interpolation**: Surface messages accept the resource name and search query as parameters, so the same component can say "No jobs found" or "No candidates found" without per-resource special cases
+
+The `EmptyStateSurface` and `ErrorStateSurface` components in `state-surface.tsx` implement this taxonomy. List views pass `resource`, `hasFilters`, `hasSearch`, and action callbacks — the surface component selects the appropriate message, icon, and actions based on the combination of flags.
 
 ## Security Model
 
@@ -449,6 +539,16 @@ Test infrastructure:
 - Integration tests use `setupIntegrationTests()` for database lifecycle
 - Shared harnesses: `setupTestAuth()`, `setupEmailHarness()`, `setupStorageHarness()`, `setupRateLimitHarness()`
 - Mock policy: mocks are restricted to narrow, justified cases (see [`__tests__/MOCKING_POLICY.md`](./__tests__/MOCKING_POLICY.md))
+
+### Test Database Infrastructure
+
+Integration tests run against a dedicated PostgreSQL instance (port 5433) separate from the development database (port 5432). The test database enforces three safety invariants:
+
+- **Port isolation**: The test connection string must target port 5433. The setup utility rejects any connection that doesn't match, preventing accidental writes to the development database.
+- **Name guard**: The database name must contain the substring "test". This is a second-chance check that catches misconfigured connection strings.
+- **Single-connection pool**: The test Prisma client uses `connection_limit=1` to prevent connection pool exhaustion during parallel test runs and to make transaction behavior deterministic.
+
+The `setupIntegrationTests()` harness manages database lifecycle per test file. In its default mode, it runs `deleteMany` on all tables in foreign-key-safe order before each test, ensuring a clean slate without the overhead of dropping and recreating the schema. For validation-only test suites that don't write to the database, the `resetBeforeEach: false` option skips cleanup entirely.
 
 ## Documentation
 
