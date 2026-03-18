@@ -452,7 +452,7 @@ export async function POST(request: NextRequest) {
     isCritical: body.isCritical ?? false,
     openedAt: openedAt ?? new Date(),
     targetFillDate: targetFillDate ?? null,
-    closedAt: status === JobStatus.CLOSED ? new Date() : null,
+    closedAt: (status === JobStatus.HIRED || status === JobStatus.HIRED_CW) ? new Date() : null,
   }
 
   const job = await prisma.job.create({
