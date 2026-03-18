@@ -1,42 +1,33 @@
-import { NextResponse } from "next/server"
+import { NextResponse } from 'next/server'
 
-import { auth } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
+import { auth } from '@/lib/auth'
+import {
+  JOB_FILTER_DEFINITION_BY_FIELD,
+  JOB_FILTER_MISSING_VALUE,
+  JOB_SERVER_FILTER_FIELDS,
+  type JobFilterOption,
+  type JobServerFilterField,
+  type JobsFilterOptionsResponse,
+} from "@/lib/job-filter-constants"
+import { prisma } from '@/lib/prisma'
 
-export const JOB_FILTER_FIELDS = [
-  "department",
-  "employeeType",
-  "location",
-  "recruiterOwner",
-  "functionalPriority",
-  "corporatePriority",
-  "function",
-  "level",
-  "horizon",
-  "asset",
-] as const
-
-export type JobFilterField = (typeof JOB_FILTER_FIELDS)[number]
-
-export const JOB_FILTER_MISSING_VALUE = "__MISSING__" as const
-
-export type JobFilterOption = {
-  value: string
-  label: string
-  isMissing: boolean
+export {
+  JOB_FILTER_MISSING_VALUE,
+  JOB_SERVER_FILTER_FIELDS,
+  type JobFilterOption,
+  type JobServerFilterField,
 }
 
-export type JobsFilterOptionsResponse = {
-  missingValue: typeof JOB_FILTER_MISSING_VALUE
-  options: Record<JobFilterField, JobFilterOption[]>
-}
-
-function buildFilterOptions(values: Array<string | null>): JobFilterOption[] {
+function buildFilterOptions(
+  field: JobServerFilterField,
+  values: Array<string | null>,
+): JobFilterOption[] {
   const options: JobFilterOption[] = []
   let hasMissingValue = false
+  const definition = JOB_FILTER_DEFINITION_BY_FIELD[field]
 
   for (const value of values) {
-    if (value === null || value.trim() === "") {
+    if (value === null || value.trim() === '') {
       hasMissingValue = true
       continue
     }
@@ -50,15 +41,15 @@ function buildFilterOptions(values: Array<string | null>): JobFilterOption[] {
 
   options.sort((left, right) =>
     left.label.localeCompare(right.label, undefined, {
-      sensitivity: "base",
+      sensitivity: 'base',
       numeric: true,
     }),
   )
 
-  if (hasMissingValue) {
+  if (hasMissingValue && definition.supportsMissing) {
     options.push({
       value: JOB_FILTER_MISSING_VALUE,
-      label: "Missing",
+      label: 'Missing',
       isMissing: true,
     })
   }
@@ -67,76 +58,76 @@ function buildFilterOptions(values: Array<string | null>): JobFilterOption[] {
 }
 
 async function loadDistinctFieldValues(
-  field: JobFilterField,
+  field: JobServerFilterField,
 ): Promise<Array<string | null>> {
   switch (field) {
-    case "department":
+    case 'department':
       return (
         await prisma.job.findMany({
-          distinct: ["department"],
+          distinct: ['department'],
           select: { department: true },
         })
       ).map((row) => row.department)
-    case "employeeType":
+    case 'employeeType':
       return (
         await prisma.job.findMany({
-          distinct: ["employeeType"],
+          distinct: ['employeeType'],
           select: { employeeType: true },
         })
       ).map((row) => row.employeeType)
-    case "location":
+    case 'location':
       return (
         await prisma.job.findMany({
-          distinct: ["location"],
+          distinct: ['location'],
           select: { location: true },
         })
       ).map((row) => row.location)
-    case "recruiterOwner":
+    case 'recruiterOwner':
       return (
         await prisma.job.findMany({
-          distinct: ["recruiterOwner"],
+          distinct: ['recruiterOwner'],
           select: { recruiterOwner: true },
         })
       ).map((row) => row.recruiterOwner)
-    case "functionalPriority":
+    case 'functionalPriority':
       return (
         await prisma.job.findMany({
-          distinct: ["functionalPriority"],
+          distinct: ['functionalPriority'],
           select: { functionalPriority: true },
         })
       ).map((row) => row.functionalPriority)
-    case "corporatePriority":
+    case 'corporatePriority':
       return (
         await prisma.job.findMany({
-          distinct: ["corporatePriority"],
+          distinct: ['corporatePriority'],
           select: { corporatePriority: true },
         })
       ).map((row) => row.corporatePriority)
-    case "function":
+    case 'function':
       return (
         await prisma.job.findMany({
-          distinct: ["function"],
+          distinct: ['function'],
           select: { function: true },
         })
       ).map((row) => row.function)
-    case "level":
+    case 'level':
       return (
         await prisma.job.findMany({
-          distinct: ["level"],
+          distinct: ['level'],
           select: { level: true },
         })
       ).map((row) => row.level)
-    case "horizon":
+    case 'horizon':
       return (
         await prisma.job.findMany({
-          distinct: ["horizon"],
+          distinct: ['horizon'],
           select: { horizon: true },
         })
       ).map((row) => row.horizon)
-    case "asset":
+    case 'asset':
       return (
         await prisma.job.findMany({
-          distinct: ["asset"],
+          distinct: ['asset'],
           select: { asset: true },
         })
       ).map((row) => row.asset)
@@ -146,18 +137,18 @@ async function loadDistinctFieldValues(
 export async function GET() {
   const session = await auth()
   if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const optionsEntries = await Promise.all(
-    JOB_FILTER_FIELDS.map(async (field) => {
+    JOB_SERVER_FILTER_FIELDS.map(async (field) => {
       const values = await loadDistinctFieldValues(field)
-      return [field, buildFilterOptions(values)] as const
+      return [field, buildFilterOptions(field, values)] as const
     }),
   )
 
   return NextResponse.json<JobsFilterOptionsResponse>({
     missingValue: JOB_FILTER_MISSING_VALUE,
-    options: Object.fromEntries(optionsEntries) as JobsFilterOptionsResponse["options"],
+    options: Object.fromEntries(optionsEntries) as JobsFilterOptionsResponse['options'],
   })
 }

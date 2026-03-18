@@ -163,9 +163,20 @@ export function resolveDatabaseUrl(): string {
   throw new Error("DATABASE_URL environment variable is not set");
 }
 
+function resolveAdapterSchema(connectionString: string): string | undefined {
+  try {
+    return new URL(connectionString).searchParams.get("schema")?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createPrismaClient(): PrismaClient {
   const connectionString = resolveDatabaseUrl();
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = new PrismaPg(
+    { connectionString },
+    { schema: resolveAdapterSchema(connectionString) },
+  );
   return new PrismaClient({ adapter });
 }
 

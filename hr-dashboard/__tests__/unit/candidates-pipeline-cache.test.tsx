@@ -46,20 +46,26 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
-// Minimal mock for status-config
-vi.mock('@/lib/status-config', () => ({
-  APPLICATION_STAGE: {
-    APPLIED: { label: 'Applied', color: 'blue' },
-    SCREENING: { label: 'Screening', color: 'yellow' },
-    INTERVIEW: { label: 'Interview', color: 'purple' },
-    OFFER: { label: 'Offer', color: 'green' },
-  },
-  getOrderedStages: () => [
-    { key: 'APPLIED', config: { label: 'Applied', color: 'blue' } },
-    { key: 'SCREENING', config: { label: 'Screening', color: 'yellow' } },
-  ],
-  getStatusColorClasses: () => ({ bg: 'bg-blue-100', text: 'text-blue-700' }),
-}))
+// Preserve real job-status exports while narrowing the application-stage surface
+// this test cares about.
+vi.mock('@/lib/status-config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/status-config')>()
+
+  return {
+    ...actual,
+    APPLICATION_STAGE: {
+      APPLIED: { label: 'Applied', color: 'blue' },
+      SCREENING: { label: 'Screening', color: 'yellow' },
+      INTERVIEW: { label: 'Interview', color: 'purple' },
+      OFFER: { label: 'Offer', color: 'green' },
+    },
+    getOrderedStages: () => [
+      { key: 'APPLIED', config: { label: 'Applied', color: 'blue' } },
+      { key: 'SCREENING', config: { label: 'Screening', color: 'yellow' } },
+    ],
+    getStatusColorClasses: () => ({ bg: 'bg-blue-100', text: 'text-blue-700' }),
+  }
+})
 
 // Mock the mutation hooks
 const mockUpdateMutation = {

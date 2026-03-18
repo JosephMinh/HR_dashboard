@@ -268,6 +268,49 @@ describe("Integration: GET /api/jobs", () => {
     expect(ids).toContain(emptyLocationJob.id)
   })
 
+  it("supports mixed missing-plus-concrete nullable metadata selections", async () => {
+    const nullLocationJob = await factories.createJob({
+      title: "Null Location Role",
+      department: "Operations",
+      status: "OPEN",
+      location: null,
+    })
+    const emptyLocationJob = await factories.createJob({
+      title: "Empty Location Role",
+      department: "Operations",
+      status: "OPEN",
+      location: "",
+    })
+    const remoteLocationJob = await factories.createJob({
+      title: "Remote Location Role",
+      department: "Operations",
+      status: "OPEN",
+      location: "Remote",
+    })
+    await factories.createJob({
+      title: "Austin Location Role",
+      department: "Operations",
+      status: "OPEN",
+      location: "Austin",
+    })
+
+    const { GET } = await import("@/app/api/jobs/route")
+    const response = await GET(
+      new Request(
+        "http://localhost/api/jobs?location=__MISSING__&location=Remote",
+      ) as never,
+    )
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    const ids = data.jobs.map((job: { id: string }) => job.id)
+
+    expect(data.total).toBe(3)
+    expect(ids).toContain(nullLocationJob.id)
+    expect(ids).toContain(emptyLocationJob.id)
+    expect(ids).toContain(remoteLocationJob.id)
+  })
+
   it("preserves existing filters when new nullable filters are present", async () => {
     const matchingJob = await factories.createJob({
       title: "Engineering Remote Role",
