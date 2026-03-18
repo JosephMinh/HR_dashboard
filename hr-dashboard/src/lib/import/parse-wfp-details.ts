@@ -22,6 +22,7 @@ import {
   buildDescription,
   isBufferRow,
   getWarnings,
+  PIPELINE_HEALTH_AS_OF,
 } from "../wfp-sanitize";
 import type {
   ParsedJob,
@@ -285,7 +286,7 @@ export function parseWfpDetailsSheet(
           jobId: id,
           candidateId,
           recruiterOwner: job.recruiterOwner,
-          stageUpdatedAt: closedAt ?? new Date("2026-03-17"),
+          stageUpdatedAt: closedAt ?? PIPELINE_HEALTH_AS_OF,
         });
       }
     }

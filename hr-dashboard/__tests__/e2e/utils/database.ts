@@ -70,7 +70,13 @@ export async function seedTestUsers(): Promise<void> {
   for (const user of users) {
     await prisma.user.upsert({
       where: { email: user.email },
-      update: {},
+      update: {
+        name: user.name,
+        passwordHash,
+        role: user.role,
+        active: true,
+        mustChangePassword: false,
+      },
       create: {
         name: user.name,
         email: user.email,
