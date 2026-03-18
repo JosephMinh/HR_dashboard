@@ -88,6 +88,10 @@ describe("Integration: GET /api/jobs/filter-options", () => {
       { value: "Engineering", label: "Engineering", isMissing: false },
       { value: "Operations", label: "Operations", isMissing: false },
     ])
+    expect(data.options.employeeType).toEqual([
+      { value: "Contractor", label: "Contractor", isMissing: false },
+      { value: "Full-Time", label: "Full-Time", isMissing: false },
+    ])
     expect(data.options.location).toEqual([
       { value: "Remote", label: "Remote", isMissing: false },
       { value: JOB_FILTER_MISSING_VALUE, label: "Missing", isMissing: true },
@@ -129,7 +133,6 @@ describe("Integration: GET /api/jobs/filter-options", () => {
     expect(data.options.asset).toEqual([
       { value: "Core", label: "Core", isMissing: false },
       { value: "Growth", label: "Growth", isMissing: false },
-      { value: JOB_FILTER_MISSING_VALUE, label: "Missing", isMissing: true },
     ])
   })
 })

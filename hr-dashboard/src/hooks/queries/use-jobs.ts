@@ -10,6 +10,7 @@ import {
   JOB_FILTER_MISSING_VALUE,
   type JobFilterField,
   type JobFilterOption,
+  type JobServerFilterField,
 } from '@/lib/job-filter-constants'
 import {
   queryCachePolicy,
@@ -19,11 +20,11 @@ import {
   type JobsFilters,
 } from '@/lib/query-keys'
 
-export type { JobFilterField, JobFilterOption }
+export type { JobFilterField, JobFilterOption, JobServerFilterField }
 
 export interface JobFilterOptionsResponse {
   missingValue: typeof JOB_FILTER_MISSING_VALUE
-  options: Record<JobFilterField, JobFilterOption[]>
+  options: Record<JobServerFilterField, JobFilterOption[]>
 }
 
 // Types
@@ -112,10 +113,10 @@ export function useJobsQuery(filters?: JobsFilters) {
     queryKey: queryKeys.jobs.list(filters),
     queryFn: async () => {
       const url = buildUrl('/api/jobs', {
-        status: filters?.status,
+        status: serializeJobsFilterParam(filters?.status),
         department: serializeJobsFilterParam(filters?.department),
-        pipelineHealth: filters?.pipelineHealth,
-        priority: filters?.priority,
+        pipelineHealth: serializeJobsFilterParam(filters?.pipelineHealth),
+        priority: serializeJobsFilterParam(filters?.priority),
         horizon: serializeJobsFilterParam(filters?.horizon),
         employeeType: serializeJobsFilterParam(filters?.employeeType),
         function: serializeJobsFilterParam(filters?.function),

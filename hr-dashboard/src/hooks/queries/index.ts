@@ -16,6 +16,7 @@ export {
   type JobFilterField,
   type JobFilterOption,
   type JobFilterOptionsResponse,
+  type JobServerFilterField,
   type JobsResponse,
   type CreateJobInput,
   type UpdateJobInput,
