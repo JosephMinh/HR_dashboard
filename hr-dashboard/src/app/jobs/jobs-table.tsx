@@ -238,9 +238,6 @@ export function JobsTable({ userCanMutate = false }: JobsTableProps) {
                         href={`/jobs/${job.id}`}
                         className="font-medium hover:underline flex items-center gap-2"
                       >
-                        {job.isCritical && (
-                          <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden="true" />
-                        )}
                         {job.title}
                       </Link>
                     </TableCell>

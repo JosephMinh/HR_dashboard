@@ -47,9 +47,6 @@ const columns: ColumnDef<Job>[] = [
           href={`/jobs/${row.original.id}`}
           className="font-medium hover:underline flex items-center gap-2"
         >
-          {row.original.isCritical && (
-            <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden="true" />
-          )}
           {row.original.title}
         </Link>
         <div className="text-xs text-muted-foreground md:hidden">
@@ -80,8 +77,7 @@ const columns: ColumnDef<Job>[] = [
     enableSorting: false,
     cell: ({ row }) =>
       row.original.isCritical ? (
-        <span className="inline-flex items-center gap-1.5 text-sm text-red-600">
-          <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden="true" />
+        <span className="text-sm text-red-600">
           Critical
         </span>
       ) : (
