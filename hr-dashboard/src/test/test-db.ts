@@ -7,7 +7,6 @@
 
 import { PrismaClient } from "@/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { resolveAdapterSchema } from "@/lib/prisma"
 import { execSync } from "node:child_process"
 import { getTestDatabaseUrl } from "./database"
 
