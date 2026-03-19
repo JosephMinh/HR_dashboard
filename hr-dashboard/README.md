@@ -23,7 +23,7 @@ A full-stack recruiting operations platform for managing jobs, candidates, and h
 | UI | Tailwind CSS 4, Lucide icons, Sonner toasts |
 | Storage | S3-compatible (AWS S3 or MinIO) |
 | Email | Nodemailer 8 (SMTP, dev preview, test capture) |
-| Rate limiting | Upstash Redis (production), in-memory fallback (dev) |
+| Rate limiting | Upstash Redis when configured, in-memory fallback otherwise |
 | Testing | Vitest 4 (unit/integration), Playwright 1.58 (E2E) |
 | Package manager | Bun |
 
@@ -33,7 +33,8 @@ A full-stack recruiting operations platform for managing jobs, candidates, and h
 
 - KPI cards for open jobs, closed jobs, active candidates, and critical roles
 - Pipeline health summary (`AHEAD`, `ON_TRACK`, `BEHIND`)
-- Critical-jobs table prioritized for recruiter attention
+- Attention Queue for recruiter follow-up and risk triage
+- Dashboard jobs table with quick navigation into active requisitions
 
 ### Jobs
 
@@ -63,7 +64,7 @@ A full-stack recruiting operations platform for managing jobs, candidates, and h
 - Imported from the WFP workbook's "2026 Approved Budget" sheet
 - Each projection carries department, level, employee name, monthly FTE, and a temporary job ID reference
 - Projections are matched to actual `Job` records via the matchedJobId resolution algorithm (see WFP Import Pipeline)
-- Filterable by department, level, and matched/unmatched status
+- The API supports department, level, and matched/unmatched filtering; the current page UI exposes matched/unmatched filtering first
 - Matched status lets recruiters see which budget lines have corresponding open requisitions and which remain unmatched
 
 ### Tradeoffs
@@ -72,11 +73,11 @@ A full-stack recruiting operations platform for managing jobs, candidates, and h
 - Records level-change discussions: a source position traded for a target position at a different level
 - Three row types: `PAIR` (both sides present), `SOURCE_ONLY` (no target yet), `NOTE` (context annotation)
 - Each side references a job via `tempJobId` → resolved `jobId`
-- Level difference computed and stored for quick sorting and filtering
+- Level difference is computed and stored for downstream sorting/filtering; the current page emphasizes summary + table review over exposed controls
 
 ## Data Model
 
-Six primary entities:
+Eight primary entities:
 
 | Model | Purpose |
 | --- | --- |
@@ -86,6 +87,8 @@ Six primary entities:
 | `Application` | Job-candidate stage progression (unique per pair) |
 | `AuditLog` | Who changed what, when, with before/after JSON |
 | `SetPasswordToken` | HMAC-SHA256 hashed tokens for onboarding and password resets |
+| `HeadcountProjection` | Imported approved-budget projection rows matched back to jobs |
+| `Tradeoff` | Imported tradeoff rows linking source/target positions and status notes |
 
 ## Architecture & Design Principles
 
@@ -99,10 +102,10 @@ Cache timing follows a volatility-based policy matrix:
 
 | Surface | staleTime | gcTime | Rationale |
 | --- | --- | --- | --- |
-| Dashboard stats | 30s | 5m | High-visibility, changes frequently |
-| List queries | 2m | 10m | Pagination makes stale data annoying, not dangerous |
-| Detail views | 5m | 30m | Rarely changes while viewing |
-| Filter options | 10m | 60m | Near-static enum/lookup data |
+| Dashboard stats | 2m | 10m | Aggregate data with moderate write frequency |
+| List queries | 20s | 5m | Pagination/search/filter state should refresh quickly |
+| Detail views | 60s | 10m | Rarely changes while a user is viewing it |
+| Filter options | 5m | 30m | Near-static enum/lookup metadata |
 
 `keepPreviousData` is enabled on paginated list queries so that page transitions show the previous page until the new page arrives, avoiding layout flash.
 
@@ -110,7 +113,7 @@ Cache timing follows a volatility-based policy matrix:
 
 The jobs list supports multi-select filtering across nine dimensions (status, priority, pipeline health, department, employee type, location, recruiter, functional priority, corporate priority). The system uses three coordinated layers:
 
-**URL Transport** — Filter selections are stored in the URL as repeated query parameters (`?status=OPEN&status=OFFER&department=Engineering`), not as comma-separated values. This avoids the need to escape commas in values like `"New York, NY"` and works natively with `URLSearchParams.getAll()`. Each filter dimension maps to a URL parameter key; multiple values for the same key represent an OR within that dimension, while different keys represent AND across dimensions.
+**URL Transport** — On the jobs page, filter selections are stored as repeated query parameters (`?status=OPEN&status=OFFER&department=Engineering`), not as comma-separated values. This avoids the need to escape commas in values like `"New York, NY"` and works natively with `URLSearchParams.getAll()`. Each filter dimension maps to a URL parameter key; multiple values for the same key represent an OR within that dimension, while different keys represent AND across dimensions. Some older dashboard-originated links still use comma-separated status parameters, so the repeated-param contract is the jobs-page source of truth rather than a universal URL rule across the whole app.
 
 **Declarative Filter Registry** — A single TypeScript module (`job-filter-constants.ts`) declares every filter's metadata: field name, option source (inline enum or server-fetched), display label, aria label, trigger width, and whether in-popover search is enabled. The `JobsTable` component iterates this registry to render filters, so adding a new filter dimension requires only a new entry in the array — no component changes.
 
@@ -122,13 +125,13 @@ The jobs list supports multi-select filtering across nine dimensions (status, pr
 
 The Workforce Planning (WFP) importer ingests an Excel workbook containing approved headcount projections and tradeoff decisions. The pipeline has four stages:
 
-1. **Workbook Discovery** — Scans a configurable directory for `.xlsx` files matching a naming pattern. Uses a resilience strategy: if exactly one workbook matches, it's used; if multiple match, the most recently modified file wins; if none match, the import fails with a clear error rather than silently creating empty tables.
+1. **Workbook Discovery** — Resolves the workbook in a deterministic order: `WFP_WORKBOOK_PATH` override first, otherwise scan the app root for files matching the canonical naming pattern and select the highest numeric revision suffix (`2026 WFP - Approved.xlsx`, `2026 WFP - Approved (1).xlsx`, etc.). If no match exists, the import fails with a clear error rather than silently creating empty tables.
 
 2. **Multi-Sheet Parsing** — Each sheet type (projections, tradeoffs) has its own parser that handles column mapping, type coercion, and row-type classification. Parsers are pure functions: workbook in, typed arrays out, no database interaction. This makes them independently testable without any database setup.
 
 3. **Job ID Resolution** — Parsed rows reference jobs by a temporary ID from the workbook. The resolver loads all existing jobs from the database and matches temporary IDs to real job records. Unmatched IDs are preserved as-is so that operators can see which budget lines have no corresponding requisition.
 
-4. **Transactional FK-Safe Writes** — The final stage runs inside a Prisma interactive transaction. It deletes existing projections and tradeoffs (to achieve full-refresh semantics), then bulk-creates new records. The delete order respects foreign key constraints — child records before parent records — preventing constraint violations without disabling database integrity checks.
+4. **Transactional FK-Safe Writes** — The final stage runs inside a Prisma interactive transaction. In WFP seed mode, it performs a destructive refresh of recruiting-domain data (`Tradeoff`, `HeadcountProjection`, `Application`, `Candidate`, and `Job`) while leaving user/auth tables intact. IDs are deterministic (UUIDv5) so reruns are idempotent, and the delete order respects foreign key constraints rather than disabling integrity checks.
 
 ### Form Validation Architecture
 
@@ -198,7 +201,7 @@ Token properties:
 - Hashed with HMAC-SHA256 using `AUTH_SECRET` (raw token never stored)
 - Consumed atomically with race-condition protection via `updateMany` with `usedAt: null` guard
 
-If email delivery fails during invite or reset, the issued token is rolled back and any previously active tokens are restored when safe to do so.
+If email delivery fails on an initial user create, the user is still created and the API returns a fallback `setupUrl` so an admin can complete onboarding manually. On resend-invite and reset-password flows, newly issued tokens are rolled back and previously active tokens are restored when safe to do so.
 
 ### Password Policy
 
@@ -213,7 +216,7 @@ Three operational modes:
 | Mode | When | Behavior |
 | --- | --- | --- |
 | **Test** | `NODE_ENV=test` or `VITEST=true` | Captures to in-memory outbox (no real sends) |
-| **Development** | SMTP not configured | Logs redacted console preview (tokens/passwords never shown) |
+| **Development** | SMTP not configured | Logs a redacted console preview and reports delivery failure to the caller so admin flows can surface fallback handling |
 | **Production** | SMTP configured | Sends via nodemailer SMTP transport |
 
 ### Rate Limiting
@@ -221,20 +224,21 @@ Three operational modes:
 Two tiers:
 
 1. **Cloudflare** (recommended primary): Proxy-level rate limiting per IP.
-2. **Application-level** (defense-in-depth): Upstash Redis in production, in-memory fallback in dev.
+2. **Application-level** (defense-in-depth): Upstash Redis whenever it is configured, with in-memory fallback otherwise or if Redis is unavailable.
 
 Application rate limits:
 
 | Scope | Limit | Window |
 | --- | --- | --- |
-| `/api/auth/*` | 10 | 1 min |
-| `POST\|PATCH\|DELETE /api/*` | 60 | 1 min |
+| Auth callback / sign-in / sign-out endpoints | 10 | 1 min |
+| `POST\|PATCH\|DELETE\|PUT /api/*` | 60 | 1 min |
 | `GET /api/*` | 300 | 1 min |
 | `/api/upload/*` | 20 | 1 min |
 | Password setup (validate) | 30 | 15 min |
 | Password setup (submit) | 10 | 15 min |
 | Resend invite (per admin) | 5 | 15 min |
 | Password reset (per admin) | 5 | 15 min |
+| Password change (per user) | 5 | 15 min |
 
 ### Security Headers
 
@@ -252,7 +256,7 @@ Configured in `next.config.ts`:
 
 - Auth.js session cookies: host-only, `httpOnly`, `SameSite=Lax`, `secure` on HTTPS
 - Auth.js CSRF token validation on auth POST actions
-- Application mutations use only `POST`, `PATCH`, `DELETE` (no `GET` writes)
+- Browser-authenticated application mutations use `POST`, `PATCH`, `DELETE`, and `PUT`; the operational cron cleanup endpoint is a deliberate `GET` exception protected by `CRON_SECRET`
 - No additional custom CSRF layer needed at this stage
 
 ### Resume Storage
@@ -270,9 +274,9 @@ Configured in `next.config.ts`:
 - IP addresses sanitized (truncated to 45 chars, non-printable chars stripped)
 - If the acting user is deleted before the log is written, the entry is retried with `userId: null`
 
-### Known Limitation
+### Session Revocation Behavior
 
-Deactivating a user does not invalidate their active JWT session (up to 4-hour TTL). Sessions expire naturally. This is accepted for v1.
+JWTs still use a 4-hour TTL, but session authorization is refreshed from the database on subsequent auth checks. Deactivated users therefore lose access on the next checked request rather than remaining active for the full TTL.
 
 ## API Surface
 
@@ -280,11 +284,12 @@ Deactivating a user does not invalidate their active JWT session (up to 4-hour T
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/api/jobs` | GET | List jobs (pagination, search, sort, filter by status/department/health/critical) |
+| `/api/jobs` | GET | List jobs with pagination, search, sort, and multi-select filters across status, priority, pipeline, ownership, and WFP metadata |
 | `/api/jobs` | POST | Create job |
 | `/api/jobs/:id` | GET | Get job by ID |
 | `/api/jobs/:id` | PATCH | Update job |
 | `/api/jobs/:id` | DELETE | Delete job |
+| `/api/jobs/filter-options` | GET | Load server-backed jobs filter metadata and missing-value support |
 
 ### Candidates
 
@@ -303,6 +308,19 @@ Deactivating a user does not invalidate their active JWT session (up to 4-hour T
 | `/api/applications` | POST | Create application (candidate + job) |
 | `/api/applications/:id` | PATCH | Update stage, recruiter, notes |
 | `/api/applications/:id` | DELETE | Delete application |
+
+### Headcount
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/headcount` | GET | List headcount projections with pagination, filtering, and matched job metadata |
+| `/api/headcount/summary` | GET | Aggregate monthly FTE totals by department for charts |
+
+### Tradeoffs
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/tradeoffs` | GET | List tradeoff rows with pagination, filtering, sort, and linked job metadata |
 
 ### Users (Admin -- requires MANAGE_USERS permission)
 
@@ -328,6 +346,12 @@ Deactivating a user does not invalidate their active JWT session (up to 4-hour T
 | --- | --- | --- |
 | `/api/password-setup` | GET | Validate token (returns masked email, rate limited) |
 | `/api/password-setup` | POST | Consume token and set password (rate limited) |
+
+### Auth Runtime
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/auth/:path*` | GET/POST | Auth.js session, callback, sign-in, and sign-out runtime routes |
 
 ### Other
 
@@ -357,14 +381,14 @@ hr-dashboard/
 │   ├── lib/               # Auth, permissions, storage, email, rate-limit, validations, WFP parsers
 │   └── test/              # Shared test utilities and harnesses
 ├── __tests__/
-│   ├── unit/              # 37 test files (Vitest)
-│   ├── integration/       # 28 test files (Vitest + real DB)
-│   ├── e2e/               # 20 Playwright browser specs
+│   ├── unit/              # Vitest unit suites
+│   ├── integration/       # Vitest integration suites against a real DB
+│   ├── e2e/               # Playwright browser specs
 │   ├── TESTING_PLAYBOOK.md
 │   ├── RISK_MATRIX.md
 │   ├── MOCKING_POLICY.md
 │   └── COVERAGE_AUDIT.md
-├── docs/                  # Architecture, migration, and testing docs
+├── docs/                  # Architecture, migration, testing, and mock-audit docs
 ├── scripts/               # test-all.sh, coverage-guard.sh, merge-coverage.mjs, setup-minio.sh, …
 └── docker-compose*.yml    # Dev (MinIO) and test (PostgreSQL) services
 ```
@@ -378,6 +402,7 @@ Reference: [`.env.example`](./.env.example)
 | Variable | Description |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string |
+| `DIRECT_URL` | Optional direct PostgreSQL connection string used for migrations and WFP import when present |
 | `AUTH_SECRET` | Auth.js secret (`openssl rand -base64 32`) |
 | `AUTH_TRUST_HOST` | `true` for VPS/proxy deployments |
 | `STORAGE_BUCKET` | S3 bucket name for resumes |
@@ -394,7 +419,7 @@ Reference: [`.env.example`](./.env.example)
 | `SENDER_EMAIL` | "From" email address |
 | `SENDER_NAME` | "From" display name |
 
-When SMTP variables are not set, the email system falls back to console preview mode (development).
+When SMTP variables are not set, the email system logs a redacted console preview and returns a delivery failure so callers can surface fallback handling.
 
 ### Rate Limiting (Production)
 
@@ -404,6 +429,13 @@ When SMTP variables are not set, the email system falls back to console preview 
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis auth token |
 
 When not set, rate limiting falls back to an in-memory store (not suitable for multi-instance production).
+
+### Operations / Import (Optional)
+
+| Variable | Description |
+| --- | --- |
+| `WFP_WORKBOOK_PATH` | Explicit path override for the approved WFP workbook |
+| `CRON_SECRET` | Bearer token for operational cron endpoints like orphaned-resume cleanup |
 
 ### Storage (Optional)
 
@@ -443,6 +475,9 @@ bun run db:seed
 # Or import the approved WFP workbook instead of demo data
 bun run db:seed:wfp
 
+# Optional: point WFP import at a specific workbook
+WFP_WORKBOOK_PATH="./2026 WFP - Approved.xlsx" bun run db:seed:wfp
+
 # Start development server
 bun run dev
 ```
@@ -450,8 +485,8 @@ bun run dev
 ### Local MinIO (Resume Storage)
 
 ```bash
-# Start MinIO via Docker Compose
-docker compose up -d
+# Start MinIO via the dev compose file
+docker compose -f docker-compose.dev.yml up -d minio
 
 # Run setup script
 ./scripts/setup-minio.sh
@@ -475,6 +510,11 @@ bun run test:e2e
 # All stages in one command (lint → tsc → unit → integration → E2E)
 bun run test:all
 
+# Common focused variants
+bun run test:all -- --skip-e2e
+bun run test:all -- --only integration
+bun run test:all -- --coverage
+
 # Coverage
 bun run test:coverage
 bun run test:integration:coverage
@@ -489,6 +529,8 @@ Verify test infrastructure is healthy before integration/E2E runs:
 ```bash
 bun run test:preflight
 ```
+
+`test:preflight` also checks mock-policy and quarantine metadata before the heavier suites run.
 
 ### Available Scripts
 
@@ -529,9 +571,9 @@ bun run test:preflight
 
 The test suite covers critical user flows across three tiers:
 
-- **Unit tests** (37 files): API route handlers, UI components, utility functions, validation schemas, rate limiting, email service, password policy, WFP import parsers
-- **Integration tests** (28 files): Prisma operations against a real PostgreSQL database, route handler integration, email/storage/rate-limit adapter contract suites, password setup flow, system test lane
-- **E2E tests** (20 specs): Full browser journeys for onboarding, admin user management (invite, resend, reset, deactivate, delete), recruiting pipeline, failure-path scenarios (email delivery failure, storage failure, session loss), and layout/auth flows
+- **Unit tests**: API route handlers, UI components, utility functions, validation schemas, rate limiting, email service, password policy, and WFP import parsers
+- **Integration tests**: Prisma operations against a real PostgreSQL database, route-handler integration, email/storage/rate-limit adapter contracts, password setup flow, and auth/session harnesses
+- **E2E tests**: Full browser journeys for onboarding, admin user management (invite, resend, reset, deactivate, delete), recruiting pipeline, failure-path scenarios, and layout/auth flows
 
 Test infrastructure:
 - Main database: port 5432
