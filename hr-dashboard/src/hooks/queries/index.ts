@@ -50,9 +50,6 @@ export {
 export {
   useDashboardStatsQuery,
   type DashboardStats,
-  type PipelineStageCount,
-  type TopJob,
-  type ActivityItem,
 } from './use-dashboard'
 
 // Tradeoffs

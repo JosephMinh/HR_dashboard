@@ -54,6 +54,10 @@ export interface UpdateCandidateInput extends Partial<Omit<CreateCandidateInput,
   id: string
 }
 
+interface CandidateResponse {
+  candidate: Candidate
+}
+
 /**
  * Fetch candidates list with filters and pagination
  */
@@ -91,7 +95,8 @@ export function useCandidateQuery(id: string | undefined) {
     queryKey: queryKeys.candidates.detail(id ?? SKIP_QUERY_ID),
     queryFn: async () => {
       if (!id) throw new Error('Candidate ID is required')
-      return api.get<Candidate>(`/api/candidates/${id}`)
+      const response = await api.get<CandidateResponse>(`/api/candidates/${id}`)
+      return response.candidate
     },
     enabled: !!id,
     staleTime: queryCachePolicy.candidates.detail.staleTime,
@@ -135,7 +140,8 @@ export function useUpdateCandidateMutation() {
 
   return useMutation({
     mutationFn: async ({ id, ...input }: UpdateCandidateInput) => {
-      return api.patch<Candidate>(`/api/candidates/${id}`, input)
+      const response = await api.patch<CandidateResponse>(`/api/candidates/${id}`, input)
+      return response.candidate
     },
     onSuccess: (data) => {
       // Invalidate the specific candidate and all lists

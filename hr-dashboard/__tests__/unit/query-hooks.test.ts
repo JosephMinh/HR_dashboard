@@ -293,6 +293,127 @@ vi.mock('@/lib/api-client', () => ({
   createRetryPolicy: vi.fn(() => vi.fn()),
 }))
 
+describe('query hook response contracts', () => {
+  beforeEach(() => {
+    mockInvalidateQueries.mockClear()
+    mockRemoveQueries.mockClear()
+    mockUseQuery.mockClear()
+  })
+
+  it('unwraps candidate detail responses from the API envelope', async () => {
+    const { api } = await import('@/lib/api-client')
+    const candidate = {
+      id: 'cand-123',
+      firstName: 'Ava',
+      lastName: 'Chen',
+      email: 'ava@example.com',
+      phone: null,
+      linkedinUrl: null,
+      currentCompany: null,
+      location: null,
+      source: null,
+      resumeKey: null,
+      resumeName: null,
+      notes: null,
+      createdAt: '2026-03-20T00:00:00.000Z',
+      updatedAt: '2026-03-20T00:00:00.000Z',
+    }
+    vi.mocked(api.get).mockResolvedValueOnce({ candidate })
+
+    const { useCandidateQuery } = await import('@/hooks/queries/use-candidates')
+    const query = useCandidateQuery(candidate.id) as unknown as {
+      queryKey: unknown
+      queryFn: () => Promise<unknown>
+    }
+
+    expect(query.queryKey).toEqual(queryKeys.candidates.detail(candidate.id))
+    await expect(query.queryFn()).resolves.toEqual(candidate)
+  })
+
+  it('unwraps candidate update responses from the API envelope', async () => {
+    const { api } = await import('@/lib/api-client')
+    const candidate = {
+      id: 'cand-456',
+      firstName: 'Mina',
+      lastName: 'Patel',
+      email: 'mina@example.com',
+      phone: null,
+      linkedinUrl: null,
+      currentCompany: null,
+      location: null,
+      source: null,
+      resumeKey: 'resumes/550e8400-e29b-41d4-a716-446655440000.pdf',
+      resumeName: 'resume.pdf',
+      notes: null,
+      createdAt: '2026-03-20T00:00:00.000Z',
+      updatedAt: '2026-03-20T00:00:00.000Z',
+    }
+    vi.mocked(api.patch).mockResolvedValueOnce({ candidate })
+
+    const { useUpdateCandidateMutation } = await import('@/hooks/queries/use-candidates')
+    const mutation = useUpdateCandidateMutation()
+
+    await expect(
+      mutation.mutateAsync({
+        id: candidate.id,
+        resumeKey: candidate.resumeKey,
+        resumeName: candidate.resumeName,
+      }),
+    ).resolves.toEqual(candidate)
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.candidates.detail(candidate.id),
+    })
+  })
+
+  it('uses the dashboard route contract exposed by the API', async () => {
+    const { api } = await import('@/lib/api-client')
+    const stats = {
+      jobsOpen: 4,
+      jobsClosed: 2,
+      activeCriticalJobs: 1,
+      activeCandidates: 7,
+      pipelineHealth: {
+        ahead: 1,
+        onTrack: 3,
+        behind: 2,
+      },
+      criticalJobs: [
+        {
+          id: 'job-1',
+          title: 'Platform Engineer',
+          department: 'Engineering',
+          recruiterOwner: 'Ava',
+          targetFillDate: '2026-04-01T00:00:00.000Z',
+          pipelineHealth: 'BEHIND',
+          activeCandidateCount: 2,
+        },
+      ],
+      recentJobs: [
+        {
+          id: 'job-2',
+          title: 'Designer',
+          department: 'Design',
+          status: 'OPEN',
+          pipelineHealth: 'ON_TRACK',
+          activeCandidateCount: 1,
+          updatedAt: '2026-03-20T00:00:00.000Z',
+        },
+      ],
+    }
+    vi.mocked(api.get).mockResolvedValueOnce(stats)
+
+    const { useDashboardStatsQuery } = await import('@/hooks/queries/use-dashboard')
+    const query = useDashboardStatsQuery() as unknown as {
+      queryKey: unknown
+      queryFn: () => Promise<unknown>
+    }
+
+    expect(query.queryKey).toEqual(queryKeys.dashboard.stats())
+    await expect(query.queryFn()).resolves.toEqual(stats)
+  })
+})
+
 describe('mutation invalidation patterns', () => {
   beforeEach(() => {
     mockInvalidateQueries.mockClear()
