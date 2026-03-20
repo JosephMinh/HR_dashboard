@@ -136,9 +136,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </>
           ) : null}
         </nav>
-        <div className="mt-auto px-4 pb-4 text-xs text-muted-foreground">
-          Premium Recruiting Workspace
-        </div>
       </aside>
     </>
   )
