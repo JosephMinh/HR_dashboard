@@ -390,7 +390,7 @@ describe("Integration: Validation Edge Cases", () => {
 
       expect(response.status).toBe(400)
       const json = await response.json()
-      expect(json.error).toContain("Pipeline health is required for open jobs")
+      expect(json.error).toContain("Pipeline health is required for active recruiting jobs")
     })
   })
 

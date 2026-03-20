@@ -493,9 +493,10 @@ export async function POST(request: NextRequest) {
 
   const status = body.status ?? JobStatus.OPEN
   const pipelineHealth = body.pipelineHealth ?? null
-  if (status === JobStatus.OPEN && pipelineHealth === null) {
+  const ACTIVE_STATUSES = new Set<JobStatus>([JobStatus.OPEN, JobStatus.OFFER, JobStatus.AGENCY])
+  if (ACTIVE_STATUSES.has(status) && pipelineHealth === null) {
     return NextResponse.json(
-      { error: 'Pipeline health is required for open jobs' },
+      { error: 'Pipeline health is required for active recruiting jobs' },
       { status: 400 },
     )
   }

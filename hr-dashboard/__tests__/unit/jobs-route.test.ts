@@ -374,7 +374,7 @@ describe("POST /api/jobs", () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({
-      error: "Pipeline health is required for open jobs",
+      error: "Pipeline health is required for active recruiting jobs",
     })
     expect(createMock).not.toHaveBeenCalled()
   })

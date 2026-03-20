@@ -342,8 +342,6 @@ export async function enforceRouteRateLimit(
     }
   }
 
-  pruneStore(now)
-
   const timestamps = getStore().get(storeKey) ?? []
   const activeTimestamps = timestamps.filter((ts) => now - ts < rule.windowMs)
 
